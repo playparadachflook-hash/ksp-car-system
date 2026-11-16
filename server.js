@@ -161,7 +161,7 @@ app.get('/api/bookings', (req, res) => {
        LEFT JOIN room r ON r.row_id = b.room_id
        LEFT JOIN unit_all u ON u.row_id = b.unit_id
        ${whereSql}
-       ORDER BY b.datemeet DESC, b.row_id DESC
+       ORDER BY COALESCE(NULLIF(b.datemeet, ''), substr(b.datereg, 1, 10)) DESC, b.row_id DESC
        LIMIT ? OFFSET ?`
     )
     .all(...params, pageSize, offset);
