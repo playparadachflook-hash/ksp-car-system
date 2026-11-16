@@ -110,8 +110,19 @@ function initSchema() {
   `);
 
   const cols = db.prepare('PRAGMA table_info(bookroom)').all().map((c) => c.name);
-  if (!cols.includes('assigned_to')) {
-    db.exec("ALTER TABLE bookroom ADD COLUMN assigned_to TEXT DEFAULT ''");
+  const ensureCols = [
+    ['t_time', "TEXT DEFAULT ''"],
+    ['start_km', "TEXT DEFAULT ''"],
+    ['stop_km', "TEXT DEFAULT ''"],
+    ['sum_km', "TEXT DEFAULT ''"],
+    ['oil', "TEXT DEFAULT ''"],
+    ['bill_oil', "TEXT DEFAULT ''"],
+    ['assigned_to', "TEXT DEFAULT ''"],
+  ];
+  for (const [colName, colDef] of ensureCols) {
+    if (!cols.includes(colName)) {
+      db.exec(`ALTER TABLE bookroom ADD COLUMN ${colName} ${colDef}`);
+    }
   }
 }
 

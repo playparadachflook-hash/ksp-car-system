@@ -655,6 +655,14 @@ async function loadAdminList(page = 1) {
   `;
 }
 
+function calcAaSumKm() {
+  const s = Number(document.getElementById('aaStartKm').value || 0);
+  const e = Number(document.getElementById('aaStopKm').value || 0);
+  if (e > s && s > 0) {
+    document.getElementById('aaSumKm').value = e - s;
+  }
+}
+
 async function openAdminActionModal(id) {
   const r = await api(`/api/bookings/${id}`);
   document.getElementById('aaRowId').textContent = r.row_id;
@@ -668,6 +676,12 @@ async function openAdminActionModal(id) {
     '<option value="0">-- ยังไม่ระบุรถ --</option>' +
     state.vehicles.map((v) => `<option value="${v.row_id}" ${v.row_id === r.room_id ? 'selected' : ''}>${esc(v.name)}</option>`).join('');
   document.getElementById('aaAssignedTo').value = r.assigned_to || '';
+  document.getElementById('aaTtime').value = r.t_time || '';
+  document.getElementById('aaStartKm').value = r.start_km || '';
+  document.getElementById('aaStopKm').value = r.stop_km || '';
+  document.getElementById('aaSumKm').value = r.sum_km || '';
+  document.getElementById('aaOil').value = r.oil || '';
+  document.getElementById('aaBillOil').value = r.bill_oil || '';
   document.getElementById('aaMemo1').value = r.memo1 || '';
 
   document.getElementById('aaEquipChecks').innerHTML = state.drivers
@@ -688,6 +702,12 @@ async function submitAdminAction(e) {
       room_id: Number(document.getElementById('aaRoomId').value || 0),
       equipIds,
       assigned_to: document.getElementById('aaAssignedTo').value,
+      t_time: document.getElementById('aaTtime').value,
+      start_km: document.getElementById('aaStartKm').value,
+      stop_km: document.getElementById('aaStopKm').value,
+      sum_km: document.getElementById('aaSumKm').value,
+      oil: document.getElementById('aaOil').value,
+      bill_oil: document.getElementById('aaBillOil').value,
       memo1: document.getElementById('aaMemo1').value,
     }),
   });

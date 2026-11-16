@@ -455,41 +455,71 @@
 
   <!-- ADMIN APPROVAL & ASSIGNMENT MODAL -->
   <div id="adminActionModal" class="modal hidden no-print">
-    <div class="modal-box">
+    <div class="modal-box" style="max-width:860px;">
       <div class="modal-head">
         <h3>อนุมัติขอใช้รถและมอบหมาย พขร. #<span id="aaRowId"></span></h3>
         <button class="close-btn" onclick="closeModal('adminActionModal')">✕</button>
       </div>
-      <div id="aaSummary" class="alert" style="background:#f0f9ff;border-color:#bae6fd;color:#0f172a;display:block;"></div>
+      <div id="aaSummary" class="alert" style="background:#f8fafc;border-color:#cbd5e1;color:#0f172a;display:block;"></div>
       <form onsubmit="submitAdminAction(event)">
         <input type="hidden" id="aaId" />
-        <div class="form-group">
-          <label>ผลการอนุมัติ *</label>
-          <select id="aaStatus">
-            <option value="0">รออนุมัติ</option>
-            <option value="1">อนุมัติแล้ว</option>
-            <option value="6">ไม่อนุมัติ</option>
-            <option value="9">ยกเลิกการจอง</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label>จัดรถยนต์ให้บริการ</label>
-          <select id="aaRoomId"></select>
-        </div>
-        <div class="form-group">
-          <label>มอบหมายพนักงานขับรถ (พขร.)</label>
-          <div id="aaEquipChecks" class="checkbox-grid"></div>
-        </div>
-        <div class="form-group">
-          <label>ระบุชื่อผู้ไปดำเนินการเพิ่มเติม (ถ้ามี)</label>
-          <input type="text" id="aaAssignedTo" placeholder="เช่น นายวันชัย, ทีม EMS..." />
-        </div>
-        <div class="form-group">
-          <label>หมายเหตุ / คำสั่งเพิ่มเติม</label>
-          <textarea id="aaMemo1" rows="3" placeholder="บันทึกการอนุมัติหรือหมายเหตุเพิ่มเติม..."></textarea>
+        <div class="admin-box" style="margin-top:0;">
+          <h3>ส่วนสำหรับผู้ดูแลระบบ (จัดรถ / บันทึกเลขไมล์และน้ำมัน)</h3>
+          <div class="form-grid">
+            <div class="form-group full">
+              <label>จัดรถยนต์ให้บริการ</label>
+              <select id="aaRoomId"></select>
+            </div>
+            <div class="form-group full">
+              <label>พนักงานขับรถ (พขร.)</label>
+              <div id="aaEquipChecks" class="checkbox-grid"></div>
+            </div>
+            <div class="form-group full">
+              <label>ระบุชื่อผู้ไปดำเนินการเพิ่มเติม (ถ้ามี)</label>
+              <input type="text" id="aaAssignedTo" placeholder="เช่น นายวันชัย, ทีม EMS..." />
+            </div>
+            <div class="form-group">
+              <label>สถานะการอนุมัติ</label>
+              <select id="aaStatus">
+                <option value="0">รออนุมัติ</option>
+                <option value="1">อนุมัติแล้ว</option>
+                <option value="6">ไม่อนุมัติ</option>
+                <option value="9">ยกเลิกการจอง</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>เวลากลับจริง</label>
+              <input type="time" id="aaTtime" />
+            </div>
+            <div class="form-group">
+              <label>ไมล์ไป (ก.ม.)</label>
+              <input type="number" id="aaStartKm" oninput="calcAaSumKm()" placeholder="0" />
+            </div>
+            <div class="form-group">
+              <label>ไมล์กลับ (ก.ม.)</label>
+              <input type="number" id="aaStopKm" oninput="calcAaSumKm()" placeholder="0" />
+            </div>
+            <div class="form-group">
+              <label>รวมระยะทาง (ก.ม.)</label>
+              <input type="number" id="aaSumKm" placeholder="0" />
+            </div>
+            <div class="form-group">
+              <label>บิลค่าน้ำมัน (บาท)</label>
+              <input type="number" id="aaOil" placeholder="0" />
+            </div>
+            <div class="form-group">
+              <label>เลขที่ใบเสร็จค่าน้ำมัน</label>
+              <input type="text" id="aaBillOil" placeholder="เลขที่ / เล่มที่" />
+            </div>
+            <div class="form-group full">
+              <label>บันทึกเพิ่มเติม (งานจัดรถ)</label>
+              <textarea id="aaMemo1" rows="3" placeholder="บันทึกการอนุมัติหรือหมายเหตุเพิ่มเติม..."></textarea>
+            </div>
+          </div>
         </div>
         <div class="form-actions">
-          <button type="submit" class="btn btn-primary full-btn">💾 บันทึกการอนุมัติและมอบหมาย</button>
+          <button type="submit" class="btn btn-primary">💾 บันทึกขอใช้รถ</button>
+          <button type="button" class="btn btn-outline" onclick="closeModal('adminActionModal')">ยกเลิก</button>
         </div>
       </form>
     </div>
