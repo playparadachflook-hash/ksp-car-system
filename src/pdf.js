@@ -122,12 +122,13 @@ function generateCarBookingPdf(booking, res, download = false) {
   y += 20;
 
   const driverNames = (booking.equipNames && booking.equipNames.length) ? booking.equipNames.join(', ') : '-';
+  const assignee = [driverNames !== '-' ? driverNames : '', booking.assigned_to || ''].filter(Boolean).join(' / ') || '-';
   const kmText = `ไมล์ไป: ${booking.start_km || '-'}  |  ไมล์กลับ: ${booking.stop_km || '-'}  |  รวมระยะทาง: ${booking.sum_km || '-'} ก.ม.`;
   const oilText = `${booking.oil ? `${Number(booking.oil).toLocaleString()} บาท` : '0 บาท'}${booking.bill_oil ? `  (ใบเสร็จ: ${booking.bill_oil})` : ''}`;
 
   const rows2 = [
     ['รถที่จัดให้บริการ', booking.room_name || '-', true],
-    ['พนักงานขับรถ (พขร.)', driverNames],
+    ['พนักงานขับรถ (พขร.) / ผู้ดำเนินการ', assignee],
     ['สถานะการอนุมัติ', st.label, true],
     ['เลขไมล์ / ระยะทาง', kmText],
     ['ค่าน้ำมัน / ใบเสร็จ', oilText],

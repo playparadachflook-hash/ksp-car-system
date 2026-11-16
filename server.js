@@ -355,6 +355,28 @@ app.put('/api/bookings/:id', requireAuth, (req, res) => {
   res.json({ ok: true });
 });
 
+app.patch('/api/bookings/:id/approve', requireAdmin, (req, res) => {
+  const id = Number(req.params.id);
+  const existing = db.prepare('SELECT * FROM bookroom WHERE row_id = ?').get(id);
+  if (!existing) return res.status(404).json({ error: 'ไม่พบข้อมูลใบขอใช้รถ' });
+
+  const { b_status, room_id, equipIds, assigned_to, memo1 } = req.body;
+  const equipStr = Array.isArray(equipIds) ? (equipIds.length ? `${equipIds.join('|')}|` : '') : existing.equip;
+
+  db.prepare(
+    `UPDATE bookroom SET b_status = ?, room_id = ?, equip = ?, assigned_to = ?, memo1 = ?, d_update = ? WHERE row_id = ?`
+  ).run(
+    Number(b_status ?? existing.b_status),
+    room_id !== undefined ? Number(room_id) : existing.room_id,
+    equipStr,
+    (assigned_to ?? existing.assigned_to ?? '').trim(),
+    memo1 !== undefined ? memo1 : existing.memo1,
+    nowSql(),
+    id
+  );
+  res.json({ ok: true });
+});
+
 app.delete('/api/bookings/:id', requireAdmin, (req, res) => {
   db.prepare('DELETE FROM bookroom WHERE row_id = ?').run(Number(req.params.id));
   res.json({ ok: true });

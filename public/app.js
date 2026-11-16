@@ -168,6 +168,7 @@ function switchTab(tab) {
       document.getElementById('fDatemeet').value = new Date().toISOString().slice(0, 10);
     }
     if (tab === 'reports') loadReports();
+    if (tab === 'admin') loadAdminList(1);
     if (tab === 'vehicles') renderVehicles();
     if (tab === 'drivers') renderDrivers();
     if (tab === 'units') renderUnits();
@@ -605,6 +606,94 @@ async function loadReports() {
     renderTable('สรุปตามพนักงานขับรถ (พขร.)', ['ชื่อ พขร.', 'จำนวนเที่ยว'], drvRows) +
     renderTable('สรุปตามรถที่ให้บริการ', ['รถยนต์', 'เที่ยว', 'ระยะทาง (ก.ม.)', 'น้ำมัน (บ.)'], vehRows) +
     renderTable('สรุปตามหน่วยงาน', ['หน่วยงาน', 'เที่ยว', 'ระยะทาง (ก.ม.)', 'น้ำมัน (บ.)'], deptRows);
+}
+
+// ==================== ADMIN APPROVAL & ASSIGNMENT ====================
+async function loadAdminList(page = 1) {
+  const params = new URLSearchParams({
+    page,
+    limit: 30,
+    status: document.getElementById('adminFilterStatus').value,
+    q: document.getElementById('adminFilterQ').value,
+  });
+  const data = await api(`/api/bookings?${params.toString()}`);
+  const tbody = document.getElementById('adminTbody');
+
+  if (!data.items.length) {
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#64748b;padding:24px;">ไม่พบรายการในสถานะที่เลือก</td></tr>';
+  } else {
+    tbody.innerHTML = data.items
+      .map((r) => {
+        const st = STATUS_MAP[r.b_status] || { label: r.b_status, cls: 'badge-1' };
+        const unit = r.unit_name || r.unit_out || '-';
+        const assignee = [...(r.equipNames || []), r.assigned_to || ''].filter(Boolean).join(', ') || '-';
+        return `
+          <tr>
+            <td><strong>#${r.row_id}</strong></td>
+            <td style="white-space:nowrap">${fmtThaiDate(r.datemeet)}<br><small style="color:#64748b">${esc(r.s_time || '')}-${esc(r.e_time || '')}</small></td>
+            <td><strong>${esc(r.subject)}</strong>${r.perhead ? `<br><small style="color:#64748b">📍 ${esc(r.perhead)}</small>` : ''}</td>
+            <td>${esc(unit)}<br><small style="color:#64748b">${esc(r.numper || r.perbook || '-')}</small></td>
+            <td>${esc(r.room_name || '-')}</td>
+            <td>${esc(assignee)}</td>
+            <td><span class="badge ${st.cls}">${st.label}</span></td>
+            <td style="white-space:nowrap">
+              <button class="btn btn-outline btn-sm" onclick="viewBooking(${r.row_id})">👁️ ดู PDF</button>
+              <button class="btn btn-primary btn-sm" onclick="openAdminActionModal(${r.row_id})">✅ อนุมัติ / จัดรถ</button>
+            </td>
+          </tr>
+        `;
+      })
+      .join('');
+  }
+
+  document.getElementById('adminPagination').innerHTML = `
+    <div>ทั้งหมด <strong>${data.total.toLocaleString()}</strong> รายการ (หน้า ${data.page} / ${data.totalPages})</div>
+    <div style="display:flex;gap:6px;">
+      <button class="btn btn-outline btn-sm" ${data.page <= 1 ? 'disabled' : ''} onclick="loadAdminList(${data.page - 1})">◀ ก่อนหน้า</button>
+      <button class="btn btn-outline btn-sm" ${data.page >= data.totalPages ? 'disabled' : ''} onclick="loadAdminList(${data.page + 1})">ถัดไป ▶</button>
+    </div>
+  `;
+}
+
+async function openAdminActionModal(id) {
+  const r = await api(`/api/bookings/${id}`);
+  document.getElementById('aaRowId').textContent = r.row_id;
+  document.getElementById('aaId').value = r.row_id;
+  document.getElementById('aaSummary').innerHTML = `
+    <strong>เรื่อง:</strong> ${esc(r.subject)} (${esc(r.perhead || '-')})<br>
+    <strong>หน่วยงาน:</strong> ${esc(r.unit_name || r.unit_out || '-')} | <strong>ผู้ขอ:</strong> ${esc(r.numper || '-')} | <strong>วันที่:</strong> ${fmtThaiDate(r.datemeet)}
+  `;
+  document.getElementById('aaStatus').value = String(r.b_status ?? 0);
+  document.getElementById('aaRoomId').innerHTML =
+    '<option value="0">-- ยังไม่ระบุรถ --</option>' +
+    state.vehicles.map((v) => `<option value="${v.row_id}" ${v.row_id === r.room_id ? 'selected' : ''}>${esc(v.name)}</option>`).join('');
+  document.getElementById('aaAssignedTo').value = r.assigned_to || '';
+  document.getElementById('aaMemo1').value = r.memo1 || '';
+
+  document.getElementById('aaEquipChecks').innerHTML = state.drivers
+    .map((d) => `<label><input type="checkbox" name="aaEquip" value="${d.row_id}" ${r.equipIds.includes(String(d.row_id)) ? 'checked' : ''} /> ${esc(d.name)}</label>`)
+    .join('');
+
+  document.getElementById('adminActionModal').classList.remove('hidden');
+}
+
+async function submitAdminAction(e) {
+  e.preventDefault();
+  const id = document.getElementById('aaId').value;
+  const equipIds = Array.from(document.querySelectorAll('input[name="aaEquip"]:checked')).map((c) => c.value);
+  await api(`/api/bookings/${id}/approve`, {
+    method: 'PATCH',
+    body: JSON.stringify({
+      b_status: Number(document.getElementById('aaStatus').value),
+      room_id: Number(document.getElementById('aaRoomId').value || 0),
+      equipIds,
+      assigned_to: document.getElementById('aaAssignedTo').value,
+      memo1: document.getElementById('aaMemo1').value,
+    }),
+  });
+  closeModal('adminActionModal');
+  await loadStats();
+  loadAdminList(1);
 }
 
 // ==================== MASTER CRUD ====================
