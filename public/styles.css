@@ -605,21 +605,13 @@ tbody tr:hover { background: #f0f9ff; }
   gap: 12px;
   padding: 24px 5vw;
 }
-.login-split-box {
-  background: #ffffff;
-  width: 100%;
-  max-width: 760px;
-  border-radius: 24px;
-  overflow: hidden;
-  display: grid;
-  grid-template-columns: 1.05fr 1fr;
-  box-shadow: 0 30px 70px rgba(5, 150, 105, 0.40), 0 12px 30px rgba(0, 0, 0, 0.42);
+$10 28px 70px rgba(16, 185, 129, 0.36), 0 10px 30px rgba(15, 23, 42, 0.16);
   padding: 0;
 }
 .login-left {
   position: relative;
   overflow: hidden;
-  background: linear-gradient(155deg, #047857 0%, #059669 48%, #0d9488 100%);
+  background: linear-gradient(155deg, #065f46 0%, #10b981 55%, #14b8a6 100%);
   color: #ffffff;
   padding: 36px 28px;
   display: flex;
@@ -627,14 +619,6 @@ tbody tr:hover { background: #f0f9ff; }
   align-items: center;
   justify-content: center;
   text-align: center;
-}
-.login-left::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background-image: repeating-linear-gradient(-45deg, rgba(255, 255, 255, 0.08) 0px, rgba(255, 255, 255, 0.08) 12px, transparent 12px, transparent 28px);
-  background-size: auto;
-  pointer-events: none;
 }
 .login-left > * {
   position: relative;
@@ -779,8 +763,8 @@ tbody tr:hover { background: #f0f9ff; }
 }
 .login-input-wrap input:focus {
   outline: none;
-  border-color: #059669;
-  box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.18);
+  border-color: #10b981;
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.18);
 }
 .login-eye-btn {
   position: absolute;
@@ -806,12 +790,7 @@ tbody tr:hover { background: #f0f9ff; }
   padding: 11px 16px;
   border: none;
   border-radius: 10px;
-  background: linear-gradient(90deg, #059669 0%, #0d9488 100%);
-  color: #ffffff;
-  font-size: 15px;
-  font-weight: 600;
-  cursor: pointer;
-  box-shadow: 0 8px 20px rgba(5, 150, 105, 0.34);
+  background: linear-gradient(90deg, #065f46 0%, #14b8a6 100%);$20 8px 20px rgba(16, 185, 129, 0.34);
   transition: transform 0.15s, box-shadow 0.15s;
 }
 .btn-login-submit:hover {
