@@ -334,30 +334,65 @@ function generateReportSectionPdf(title, filterDesc, columns, rows, res, downloa
   };
 
   let y = drawHeader();
+  const pageBottom = doc.page.height - 42;
+  const maxBodyH = pageBottom - 94;
 
-  for (let i = 0; i < rows.length; i++) {
-    const vals = rows[i];
-    doc.font('Sarabun').fontSize(9);
+  const measureRow = (vals) => {
+    doc.font('Sarabun').fontSize(8.5);
     let maxH = 20;
     vals.forEach((v, idx) => {
       const h = doc.heightOfString(String(v ?? '-'), { width: columns[idx].w - 8 }) + 9;
       if (h > maxH) maxH = h;
     });
+    return maxH;
+  };
 
-    if (y + maxH > doc.page.height - 42) {
+  const renderSingleRow = (vals, rowIdx) => {
+    const maxH = measureRow(vals);
+    if (y + maxH > pageBottom) {
       doc.addPage({ size: 'A4', margins: { top: 36, bottom: 36, left: 36, right: 36 } });
       y = drawHeader();
     }
-
     let cx = left;
-    const bg = i % 2 === 0 ? '#ffffff' : '#f8fafc';
+    const bg = rowIdx % 2 === 0 ? '#ffffff' : '#f8fafc';
     vals.forEach((v, idx) => {
       doc.rect(cx, y, columns[idx].w, maxH).fillAndStroke(bg, '#cbd5e1');
-      doc.fillColor('#0f172a').font('Sarabun').fontSize(9)
+      doc.fillColor('#0f172a').font('Sarabun').fontSize(8.5)
         .text(String(v ?? '-'), cx + 4, y + 4.5, { width: columns[idx].w - 8, align: columns[idx].align || 'left' });
       cx += columns[idx].w;
     });
     y += maxH;
+  };
+
+  for (let i = 0; i < rows.length; i++) {
+    const vals = rows[i];
+    const maxH = measureRow(vals);
+    const multiColIdx = vals.findIndex((v) => typeof v === 'string' && v.includes('\n'));
+    if (maxH > maxBodyH && multiColIdx >= 0) {
+      const lines = vals[multiColIdx].split('\n');
+      let chunk = [];
+      let isFirst = true;
+      const flushChunk = () => {
+        if (!chunk.length) return;
+        const cVals = isFirst ? [...vals] : vals.map((_, idx) => (idx === 1 ? '(ต่อ)' : ''));
+        cVals[multiColIdx] = chunk.join('\n');
+        renderSingleRow(cVals, i);
+        chunk = [];
+        isFirst = false;
+      };
+      for (const line of lines) {
+        const testText = [...chunk, line].join('\n');
+        const testH = doc.font('Sarabun').fontSize(8.5).heightOfString(testText, { width: columns[multiColIdx].w - 8 }) + 9;
+        const avail = y + testH > pageBottom ? maxBodyH : pageBottom - y;
+        if (chunk.length && testH > Math.max(avail, 120) && testH > maxBodyH * 0.85) {
+          flushChunk();
+        }
+        chunk.push(line);
+      }
+      flushChunk();
+    } else {
+      renderSingleRow(vals, i);
+    }
   }
 
   if (y + 115 > doc.page.height - 32) {

@@ -467,18 +467,38 @@ function getCarReportData(query) {
 
   const equips = db.prepare('SELECT row_id, name FROM equip ORDER BY row_id').all();
   const rows = db
-    .prepare(`SELECT row_id, datemeet, subject, perhead, equip, unit_out FROM bookroom b ${whereSql} ORDER BY b.datemeet DESC, b.row_id DESC`)
+    .prepare(`SELECT row_id, datemeet, subject, perhead, perbook, equip, unit_out FROM bookroom b ${whereSql} ORDER BY b.datemeet DESC, b.row_id DESC`)
     .all(...params);
+
+  const mShort = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+  const fmtShort = (iso) => {
+    if (!iso || String(iso).startsWith('0000')) return '-';
+    const p = String(iso).slice(0, 10).split('-');
+    if (p.length !== 3) return String(iso);
+    return `${Number(p[2])} ${mShort[Number(p[1]) - 1] || p[1]} ${Number(p[0]) + 543}`;
+  };
 
   const byDriver = equips.map((e) => {
     const matched = rows.filter((t) => (t.equip || '').split('|').includes(String(e.row_id)));
-    const trips = matched.slice(0, 15).map((t) => `${t.datemeet || ''}: ${t.perhead || t.subject || '-'}`);
+    const tripsList = matched.map((t, idx) => {
+      const dateStr = fmtShort(t.datemeet);
+      const place = (t.perhead || t.subject || '-').trim();
+      const requester = (t.perbook || '-').trim();
+      return {
+        row_id: t.row_id,
+        datemeet: t.datemeet,
+        dateStr,
+        place,
+        requester,
+        line: `${idx + 1}. ${dateStr} | ${place} (ผู้ขอรถ: ${requester})`,
+      };
+    });
     return {
       row_id: e.row_id,
       name: e.name,
       total: matched.length,
-      tripsSummary: trips.join(' | ') + (matched.length > 15 ? ` ... (+อีก ${matched.length - 15} เที่ยว)` : ''),
-      trips: matched.slice(0, 15).map((t) => ({ row_id: t.row_id, datemeet: t.datemeet, place: t.perhead || t.subject || '-' })),
+      tripsSummary: tripsList.map((t) => t.line).join('\n') || '-',
+      trips: tripsList,
     };
   });
 
@@ -504,10 +524,10 @@ app.get('/api/reports/pdf', (req, res) => {
 
   if (section === 'driver') {
     const cols = [
-      { label: 'ลำดับ', w: 38, align: 'center' },
-      { label: 'ชื่อพนักงานขับรถ (พขร.)', w: 140 },
-      { label: 'จำนวนเที่ยว', w: 65, align: 'center' },
-      { label: 'รายละเอียดการเดินทาง (ไปไหนบ้าง)', w: 280 },
+      { label: 'ลำดับ', w: 34, align: 'center' },
+      { label: 'ชื่อพนักงานขับรถ (พขร.)', w: 125 },
+      { label: 'จำนวนเที่ยว', w: 52, align: 'center' },
+      { label: 'รายละเอียดการเดินทาง (วันเดือนปี / สถานที่ / ผู้ขอรถ)', w: 312 },
     ];
     const rows = data.byDriver.map((d, i) => [i + 1, d.name, d.total, d.tripsSummary || '-']);
     return generateReportSectionPdf('รายงานสรุปตามพนักงานขับรถ (พขร.)', data.filterDesc, cols, rows, res, isDl);
