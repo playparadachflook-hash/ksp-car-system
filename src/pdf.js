@@ -42,7 +42,7 @@ function fmtThaiDateShort(iso) {
 function generateCarBookingPdf(booking, res, download = false) {
   const doc = new PDFDocument({
     size: 'A4',
-    margins: { top: 40, bottom: 40, left: 42, right: 42 },
+    margins: { top: 38, bottom: 38, left: 45, right: 45 },
     info: {
       Title: `ใบขออนุญาตใช้รถยนต์ราชการ #${booking.row_id}`,
       Author: 'โรงพยาบาลโคกศรีสุพรรณ',
@@ -58,131 +58,146 @@ function generateCarBookingPdf(booking, res, download = false) {
   doc.registerFont('Sarabun-Bold', FONT_BOLD);
 
   const pageW = doc.page.width;
-  const left = 42;
-  const contentW = pageW - left * 2;
-
-  // ===== HEADER BANNER =====
-  doc.roundedRect(left, 38, contentW, 68, 6).fillAndStroke('#f0f9ff', '#0284c7');
-
-  doc.fillColor('#0369a1').font('Sarabun-Bold').fontSize(16)
-    .text('ใบขออนุญาตใช้รถยนต์ราชการออนไลน์', left + 16, 48, { width: 330 });
-  doc.fillColor('#334155').font('Sarabun').fontSize(11)
-    .text('โรงพยาบาลโคกศรีสุพรรณ จังหวัดสกลนคร', left + 16, 70, { width: 330 });
-  doc.fillColor('#64748b').fontSize(9.5)
-    .text(`วันที่บันทึกคำขอ: ${booking.datereg || '-'}`, left + 16, 86, { width: 330 });
-
+  const left = 45;
+  const contentW = pageW - left * 2; // 505.28
   const st = STATUS_INFO[booking.b_status] || { label: `สถานะ ${booking.b_status}`, color: '#334155', bg: '#e2e8f0' };
-  doc.roundedRect(left + contentW - 155, 46, 142, 52, 5).fillAndStroke('#ffffff', '#bae6fd');
-  doc.fillColor('#64748b').font('Sarabun').fontSize(9)
-    .text('เลขที่ใบขอใช้รถ', left + contentW - 155, 50, { width: 142, align: 'center' });
-  doc.fillColor('#0f172a').font('Sarabun-Bold').fontSize(14)
-    .text(`#${booking.row_id}`, left + contentW - 155, 62, { width: 142, align: 'center' });
 
-  doc.roundedRect(left + contentW - 135, 81, 102, 14, 7).fill(st.bg);
+  // ===== OFFICIAL HEADER (บันทึกข้อความ / ใบขออนุญาตใช้รถยนต์ราชการ) =====
+  doc.fillColor('#0f172a').font('Sarabun-Bold').fontSize(17)
+    .text('ใบขออนุญาตใช้รถยนต์ราชการ', left, 38, { width: contentW, align: 'center' });
+  doc.font('Sarabun').fontSize(11).fillColor('#334155')
+    .text('โรงพยาบาลโคกศรีสุพรรณ อำเภอโคกศรีสุพรรณ จังหวัดสกลนคร', left, 61, { width: contentW, align: 'center' });
+
+  // Top-right badge & doc ref
+  doc.roundedRect(left + contentW - 135, 36, 135, 42, 5).fillAndStroke('#f8fafc', '#cbd5e1');
+  doc.fillColor('#64748b').font('Sarabun').fontSize(8.5)
+    .text(`เลขที่คำขอ #${booking.row_id}`, left + contentW - 135, 41, { width: 135, align: 'center' });
+  doc.roundedRect(left + contentW - 118, 56, 100, 15, 7).fill(st.bg);
   doc.fillColor(st.color).font('Sarabun-Bold').fontSize(8.5)
-    .text(st.label, left + contentW - 135, 82, { width: 102, align: 'center' });
+    .text(st.label, left + contentW - 118, 57, { width: 100, align: 'center' });
 
-  // ===== SECTION 1 =====
-  let y = 122;
-  doc.fillColor('#0369a1').font('Sarabun-Bold').fontSize(12).text('1. รายละเอียดการขอใช้รถยนต์', left, y);
-  y += 20;
+  doc.moveTo(left, 88).lineTo(left + contentW, 88).lineWidth(1.2).stroke('#0f172a');
+
+  // ===== MEMO META =====
+  let y = 98;
+  const unitText = booking.unit_name || booking.unit_out || '-';
+  const dateReqText = booking.datereg ? fmtThaiDateFull(booking.datereg) : fmtThaiDateFull(booking.datemeet);
+
+  doc.fillColor('#0f172a').font('Sarabun-Bold').fontSize(10.5).text('ส่วนราชการ', left, y, { continued: true })
+    .font('Sarabun').text(`  ${unitText} โรงพยาบาลโคกศรีสุพรรณ`);
+  y += 18;
+  doc.font('Sarabun-Bold').text('วันที่', left, y, { continued: true })
+    .font('Sarabun').text(`  ${dateReqText}`);
+  y += 18;
+  doc.font('Sarabun-Bold').text('เรื่อง', left, y, { continued: true })
+    .font('Sarabun').text(`  ขออนุญาตใช้รถยนต์ราชการ (${booking.subject || '-'})`);
+  y += 18;
+  doc.font('Sarabun-Bold').text('เรียน', left, y, { continued: true })
+    .font('Sarabun').text('  ผู้อำนวยการโรงพยาบาลโคกศรีสุพรรณ');
+  y += 24;
+
+  // ===== BODY PARAGRAPH =====
+  const tripDate = fmtThaiDateFull(booking.datemeet);
+  const timeTxt = `${booking.s_time || '-'} น. ถึง ${booking.e_time || '-'} น.`;
+  const paxTxt = booking.passenger ? `${booking.passenger} คน` : '-';
+  const telTxt = booking.tel ? ` (โทร. ${booking.tel})` : '';
+
+  doc.font('Sarabun').fontSize(10.5).fillColor('#0f172a')
+    .text(
+      `        ข้าพเจ้า ${booking.numper || '-'}${telTxt} สังกัด ${unitText} มีความประสงค์ขออนุญาตใช้รถยนต์ราชการ ` +
+      `เพื่อไปราชการเรื่อง "${booking.subject || '-'}" ณ ${booking.perhead || '-'} ` +
+      `มีผู้ร่วมเดินทางจำนวน ${paxTxt} ในวันที่ ${tripDate} ตั้งแต่เวลา ${timeTxt}`,
+      left,
+      y,
+      { width: contentW, align: 'justify', lineGap: 4 }
+    );
+  y = doc.y + 10;
+
+  if (booking.memo) {
+    doc.font('Sarabun-Bold').fontSize(10).text('หมายเหตุ: ', left, y, { continued: true })
+      .font('Sarabun').text(booking.memo);
+    y = doc.y + 8;
+  }
+
+  // Requester signature on right
+  y += 8;
+  doc.font('Sarabun').fontSize(10)
+    .text('ลงชื่อ .................................................... ผู้ขออนุญาต', left + 210, y, { width: 280, align: 'center' })
+    .text(`( ${booking.numper || '............................................'} )`, left + 210, y + 17, { width: 280, align: 'center' });
+  y += 42;
+
+  // ===== SECTION 2: VEHICLE & DRIVER ASSIGNMENT TABLE =====
+  doc.roundedRect(left, y, contentW, 22, 4).fill('#e0f2fe');
+  doc.fillColor('#0369a1').font('Sarabun-Bold').fontSize(11)
+    .text('ส่วนที่ 2 : การจัดสรรรถยนต์ พนักงานขับรถ และบันทึกการเดินทาง (สำหรับงานยานพาหนะ)', left + 10, y + 4);
+  y += 24;
 
   const labelW = 155;
   const valW = contentW - labelW;
-
-  const rows1 = [
-    ['หน่วยงานที่ขอใช้รถ', booking.unit_name || booking.unit_out || '-'],
-    ['เรื่องที่ขอไปราชการ', booking.subject || '-', true],
-    ['สถานที่ไปราชการ', `${booking.perhead || '-'}${booking.passenger ? `  (ผู้โดยสาร ${booking.passenger} คน)` : ''}`],
-    ['ผู้ขอใช้รถ / เบอร์โทร', `${booking.numper || '-'}${booking.tel ? `  (โทร. ${booking.tel})` : ''}`],
-    ['วันที่ใช้รถ / ช่วงเวลา', `${fmtThaiDateFull(booking.datemeet)}   เวลา ${booking.s_time || '-'} - ${booking.e_time || '-'} น.`],
-    ['หมายเหตุ', booking.memo || '-'],
-  ];
-
-  for (let i = 0; i < rows1.length; i++) {
-    const [lbl, val, boldVal] = rows1[i];
-    doc.font(boldVal ? 'Sarabun-Bold' : 'Sarabun').fontSize(10.5);
-    const textH = doc.heightOfString(String(val), { width: valW - 16 });
-    const rowH = Math.max(25, textH + 12);
-
-    doc.rect(left, y, labelW, rowH).fillAndStroke('#f8fafc', '#cbd5e1');
-    doc.rect(left + labelW, y, valW, rowH).fillAndStroke('#ffffff', '#cbd5e1');
-
-    doc.fillColor('#334155').font('Sarabun-Bold').fontSize(10)
-      .text(lbl, left + 10, y + 6, { width: labelW - 16 });
-    doc.fillColor('#0f172a').font(boldVal ? 'Sarabun-Bold' : 'Sarabun').fontSize(10.5)
-      .text(String(val), left + labelW + 10, y + 6, { width: valW - 16 });
-
-    y += rowH;
-  }
-
-  // ===== SECTION 2 =====
-  y += 16;
-  doc.fillColor('#0369a1').font('Sarabun-Bold').fontSize(12).text('2. การจัดสรรรถและบันทึกการเดินทาง (สำหรับงานยานพาหนะ)', left, y);
-  y += 20;
-
   const driverNames = (booking.equipNames && booking.equipNames.length) ? booking.equipNames.join(', ') : '-';
   const assignee = [driverNames !== '-' ? driverNames : '', booking.assigned_to || ''].filter(Boolean).join(' / ') || '-';
   const kmText = `ไมล์ไป: ${booking.start_km || '-'}  |  ไมล์กลับ: ${booking.stop_km || '-'}  |  รวมระยะทาง: ${booking.sum_km || '-'} ก.ม.`;
   const oilText = `${booking.oil ? `${Number(booking.oil).toLocaleString()} บาท` : '0 บาท'}${booking.bill_oil ? `  (ใบเสร็จ: ${booking.bill_oil})` : ''}`;
 
   const rows2 = [
-    ['รถที่จัดให้บริการ', booking.room_name || '-', true],
+    ['รถยนต์ที่จัดให้บริการ', booking.room_name || '-', true],
     ['พนักงานขับรถ (พขร.) / ผู้ดำเนินการ', assignee],
-    ['สถานะการอนุมัติ', st.label, true],
-    ['เลขไมล์ / ระยะทาง', kmText],
-    ['ค่าน้ำมัน / ใบเสร็จ', oilText],
+    ['เลขไมล์ / ระยะทางที่ใช้จริง', kmText],
+    ['บิลค่าน้ำมัน / เลขที่ใบเสร็จ', oilText],
     ['เวลากลับจริง / บันทึกเพิ่มเติม', `${booking.t_time ? `เวลากลับ ${booking.t_time} น.  ` : ''}${booking.memo1 || '-'}`],
     ['ผู้บันทึก / ผู้จัดรถ', booking.perbook || '-'],
   ];
 
   for (let i = 0; i < rows2.length; i++) {
     const [lbl, val, boldVal] = rows2[i];
-    doc.font(boldVal ? 'Sarabun-Bold' : 'Sarabun').fontSize(10.5);
+    doc.font(boldVal ? 'Sarabun-Bold' : 'Sarabun').fontSize(10);
     const textH = doc.heightOfString(String(val), { width: valW - 16 });
-    const rowH = Math.max(25, textH + 12);
+    const rowH = Math.max(23, textH + 10);
 
-    doc.rect(left, y, labelW, rowH).fillAndStroke('#f0f9ff', '#cbd5e1');
+    doc.rect(left, y, labelW, rowH).fillAndStroke('#f8fafc', '#cbd5e1');
     doc.rect(left + labelW, y, valW, rowH).fillAndStroke('#ffffff', '#cbd5e1');
 
-    doc.fillColor('#334155').font('Sarabun-Bold').fontSize(10)
+    doc.fillColor('#334155').font('Sarabun-Bold').fontSize(9.5)
       .text(lbl, left + 10, y + 6, { width: labelW - 16 });
-    doc.fillColor('#0f172a').font(boldVal ? 'Sarabun-Bold' : 'Sarabun').fontSize(10.5)
+    doc.fillColor('#0f172a').font(boldVal ? 'Sarabun-Bold' : 'Sarabun').fontSize(10)
       .text(String(val), left + labelW + 10, y + 6, { width: valW - 16 });
 
     y += rowH;
   }
 
-  // ===== SIGNATURE BLOCK =====
-  const sigY = Math.max(y + 32, 650);
-  const colW = contentW / 3;
-  const sigs = [
-    { name: booking.numper || '', lines: ['ผู้ขอใช้รถ'] },
-    { name: driverNames !== '-' ? driverNames.split(',')[0].trim() : '', lines: ['พนักงานขับรถ (พขร.)'] },
-    {
-      name: 'นางณัฐปภัสร์ นวัตชัยศิริกุล',
-      lines: ['นายแพทย์ชำนาญการพิเศษ', 'รักษาการในตำแหน่ง', 'ผู้อำนวยการ รพ.โคกศรีสุพรรณ'],
-    },
-  ];
+  // ===== SECTION 3: APPROVAL & DIRECTOR SIGNATURE =====
+  const sigY = Math.max(y + 22, 620);
+  const halfW = (contentW - 16) / 2;
 
-  sigs.forEach((s, idx) => {
-    const sx = left + idx * colW;
-    doc.fillColor('#334155').font('Sarabun').fontSize(9.5)
-      .text('ลงชื่อ ...............................................', sx, sigY, { width: colW, align: 'center' });
-    doc.text(`( ${s.name ? s.name : '...........................................'} )`, sx, sigY + 17, { width: colW, align: 'center' });
-    let ly = sigY + 33;
-    s.lines.forEach((ln, li) => {
-      doc.font(li === s.lines.length - 1 ? 'Sarabun-Bold' : 'Sarabun').fontSize(9)
-        .text(ln, sx, ly, { width: colW, align: 'center' });
-      ly += 13;
-    });
-    doc.font('Sarabun').fontSize(8.5).fillColor('#64748b')
-      .text('วันที่ ........../........../..........', sx, ly + 2, { width: colW, align: 'center' });
-  });
+  // Left Box: Fleet Head / Driver
+  doc.roundedRect(left, sigY, halfW, 130, 6).stroke('#cbd5e1');
+  doc.fillColor('#334155').font('Sarabun-Bold').fontSize(10)
+    .text('ความเห็นหัวหน้างานยานพาหนะ / พขร.', left + 10, sigY + 10, { width: halfW - 20, align: 'center' });
+  doc.font('Sarabun').fontSize(9.5)
+    .text('เห็นควรอนุญาตให้ใช้รถยนต์ราชการตามรายการข้างต้น', left + 10, sigY + 30, { width: halfW - 20, align: 'center' })
+    .text('ลงชื่อ ...............................................', left + 10, sigY + 62, { width: halfW - 20, align: 'center' })
+    .text(`( ${driverNames !== '-' ? driverNames.split(',')[0].trim() : '...........................................'} )`, left + 10, sigY + 79, { width: halfW - 20, align: 'center' })
+    .text('วันที่ ........../........../..........', left + 10, sigY + 100, { width: halfW - 20, align: 'center' });
+
+  // Right Box: Director Approval
+  const rx = left + halfW + 16;
+  doc.roundedRect(rx, sigY, halfW, 130, 6).stroke('#cbd5e1');
+  const chkApprove = booking.b_status === 1 ? '[ / ] อนุญาต' : '[   ] อนุญาต';
+  const chkReject = booking.b_status === 6 ? '[ / ] ไม่อนุมัติ' : '[   ] ไม่อนุมัติ';
+  doc.fillColor('#0f172a').font('Sarabun-Bold').fontSize(10)
+    .text(`คำสั่งผู้อำนวยการ   ${chkApprove}   ${chkReject}`, rx + 10, sigY + 10, { width: halfW - 20, align: 'center' });
+  doc.font('Sarabun').fontSize(9.5)
+    .text('ลงชื่อ ...............................................', rx + 10, sigY + 36, { width: halfW - 20, align: 'center' })
+    .text('( นางณัฐปภัสร์ นวัตชัยศิริกุล )', rx + 10, sigY + 53, { width: halfW - 20, align: 'center' })
+    .text('นายแพทย์ชำนาญการพิเศษ', rx + 10, sigY + 68, { width: halfW - 20, align: 'center' })
+    .text('รักษาการในตำแหน่ง', rx + 10, sigY + 82, { width: halfW - 20, align: 'center' })
+    .font('Sarabun-Bold').text('ผู้อำนวยการ รพ.โคกศรีสุพรรณ', rx + 10, sigY + 96, { width: halfW - 20, align: 'center' });
+  doc.font('Sarabun').fontSize(8.5).fillColor('#64748b')
+    .text('วันที่ ........../........../..........', rx + 10, sigY + 113, { width: halfW - 20, align: 'center' });
 
   const nowStr = new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' });
   doc.fillColor('#94a3b8').font('Sarabun').fontSize(8.5)
-    .text(`พิมพ์จากระบบขอใช้รถยนต์ออนไลน์ โรงพยาบาลโคกศรีสุพรรณ | พิมพ์เมื่อ ${nowStr}`, left, 785, {
+    .text(`พิมพ์จากระบบขอใช้รถยนต์ออนไลน์ โรงพยาบาลโคกศรีสุพรรณ | พิมพ์เมื่อ ${nowStr}`, left, 788, {
       width: contentW,
       align: 'center',
     });
