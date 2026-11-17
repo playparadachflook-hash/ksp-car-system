@@ -672,7 +672,7 @@ async function loadReports() {
   const drvRows = data.byDriver
     .map((r) => {
       const tripList = (r.trips || [])
-        .map((t) => `<div style="font-size:12px;color:#334155;line-height:1.45;padding:1px 0;">${esc(t.line || `${fmtThaiDate(t.datemeet)} | ${t.place} (ผู้ขอรถ: ${t.requester || '-'})`)}</div>`)
+        .map((t) => `<div style="font-size:12px;color:#334155;line-height:1.45;padding:1px 0;">${esc(t.line || `${fmtThaiDate(t.datemeet)} | ${t.place} (ผู้ขอใช้รถ: ${t.requester || '-'})`)}</div>`)
         .join('');
       return `<tr><td style="vertical-align:top"><strong>${esc(r.name)}</strong></td><td style="white-space:nowrap;vertical-align:top"><strong>${r.total}</strong> เที่ยว</td><td>${tripList || '-'}</td></tr>`;
     })
@@ -688,7 +688,7 @@ async function loadReports() {
   `;
 
   document.getElementById('reportsContent').innerHTML =
-    renderTable('รายงานสรุปตามพนักงานขับรถ (พขร.)', 'driver', ['ชื่อ พขร.', 'จำนวนเที่ยว', 'รายละเอียดการเดินทาง (วันเดือนปี / สถานที่ / ผู้ขอรถ)'], drvRows) +
+    renderTable('รายงานสรุปตามพนักงานขับรถ (พขร.)', 'driver', ['ชื่อ พขร.', 'จำนวนเที่ยว', 'รายละเอียดการเดินทาง (วันเดือนปี / สถานที่ / ชื่อผู้ขอใช้รถ)'], drvRows) +
     renderTable('รายงานสรุปตามรถที่ให้บริการ', 'vehicle', ['รถยนต์', 'เที่ยว', 'ระยะทาง (ก.ม.)', 'น้ำมัน (บ.)'], vehRows) +
     renderTable('รายงานสรุปตามหน่วยงาน', 'department', ['หน่วยงาน', 'เที่ยว', 'ระยะทาง (ก.ม.)', 'น้ำมัน (บ.)'], deptRows) +
     renderTable('รายงานสรุปตามสถานะ & พื้นที่', 'status', ['รายการ', 'จำนวน (ครั้ง)'], statusRows + scopeRows);

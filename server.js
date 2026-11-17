@@ -467,7 +467,7 @@ function getCarReportData(query) {
 
   const equips = db.prepare('SELECT row_id, name FROM equip ORDER BY row_id').all();
   const rows = db
-    .prepare(`SELECT row_id, datemeet, subject, perhead, perbook, equip, unit_out FROM bookroom b ${whereSql} ORDER BY b.datemeet DESC, b.row_id DESC`)
+    .prepare(`SELECT row_id, datemeet, subject, perhead, numper, perbook, equip, unit_out FROM bookroom b ${whereSql} ORDER BY b.datemeet DESC, b.row_id DESC`)
     .all(...params);
 
   const mShort = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
@@ -490,7 +490,7 @@ function getCarReportData(query) {
         dateStr,
         place,
         requester,
-        line: `${idx + 1}. ${dateStr} | ${place} (ผู้ขอรถ: ${requester})`,
+        line: `${idx + 1}. ${dateStr} | ${place} (ผู้ขอใช้รถ: ${requester})`,
       };
     });
     return {
@@ -527,7 +527,7 @@ app.get('/api/reports/pdf', requireAdmin, (req, res) => {
       { label: 'ลำดับ', w: 34, align: 'center' },
       { label: 'ชื่อพนักงานขับรถ (พขร.)', w: 125 },
       { label: 'จำนวนเที่ยว', w: 52, align: 'center' },
-      { label: 'รายละเอียดการเดินทาง (วันเดือนปี / สถานที่ / ผู้ขอรถ)', w: 312 },
+      { label: 'รายละเอียดการเดินทาง (วันเดือนปี / สถานที่ / ชื่อผู้ขอใช้รถ)', w: 312 },
     ];
     const rows = data.byDriver.map((d, i) => [i + 1, d.name, d.total, d.tripsSummary || '-']);
     return generateReportSectionPdf('รายงานสรุปตามพนักงานขับรถ (พขร.)', data.filterDesc, cols, rows, res, isDl);
