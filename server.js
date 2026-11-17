@@ -3,7 +3,7 @@ const path = require('path');
 const express = require('express');
 const session = require('express-session');
 const db = require('./src/db');
-const { generateCarBookingPdf, generateCarBoardPdf, generateReportSectionPdf } = require('./src/pdf');
+const { generateCarBookingPdf, generateCarBoardPdf } = require('./src/pdf');
 
 const app = express();
 const PORT = Number(process.env.PORT || 3531);
@@ -183,7 +183,7 @@ app.get('/api/bookings', (req, res) => {
   });
 });
 
-app.get('/api/bookings/board/pdf', (req, res) => {
+app.get('/api/bookings/board/pdf', requireAdmin, (req, res) => {
   const { whereSql, params } = buildBookingWhere(req.query, req.session.user);
   const rows = db
     .prepare(
@@ -211,7 +211,7 @@ app.get('/api/bookings/board/pdf', (req, res) => {
   generateCarBoardPdf(items, parts.join(' | '), res, req.query.download === '1');
 });
 
-app.get('/api/bookings/:id/pdf', (req, res) => {
+app.get('/api/bookings/:id/pdf', requireAdmin, (req, res) => {
   const row = db
     .prepare(
       `SELECT b.*, r.name AS room_name, u.unit_name AS unit_name
@@ -393,45 +393,19 @@ app.delete('/api/bookings/:id', requireAdmin, (req, res) => {
 });
 
 // ==================== REPORTS ====================
-function buildReportFilter(query, col = 'b.datemeet') {
-  const { date, year, month, fiscalYear } = query;
+app.get('/api/reports/summary', (req, res) => {
+  const { year, month } = req.query;
   const where = [];
   const params = [];
-  const desc = [];
-
-  if (date) {
-    where.push(`${col} = ?`);
-    params.push(date);
-    desc.push(`วันที่ ${date}`);
-  } else if (fiscalYear) {
-    const fy = Number(fiscalYear); // e.g. 2569 -> CE 2026 -> 2025-10-01 to 2026-09-30
-    const ce = fy > 2400 ? fy - 543 : fy;
-    const start = `${ce - 1}-10-01`;
-    const end = `${ce}-09-30`;
-    where.push(`${col} >= ? AND ${col} <= ?`);
-    params.push(start, end);
-    desc.push(`ปีงบประมาณ ${ce + 543} (${start} ถึง ${end})`);
-  } else {
-    if (year) {
-      where.push(`strftime('%Y', ${col}) = ?`);
-      params.push(String(year));
-      desc.push(`ปี พ.ศ. ${Number(year) + 543}`);
-    }
-    if (month && Number(month) > 0) {
-      where.push(`strftime('%m', ${col}) = ?`);
-      params.push(String(month).padStart(2, '0'));
-      desc.push(`เดือน ${month}`);
-    }
+  if (year) {
+    where.push("strftime('%Y', b.datemeet) = ?");
+    params.push(String(year));
   }
-  return {
-    whereSql: where.length ? `WHERE ${where.join(' AND ')}` : '',
-    params,
-    filterDesc: desc.join(' | ') || 'ข้อมูลทั้งหมด',
-  };
-}
-
-function getCarReportData(query) {
-  const { whereSql, params, filterDesc } = buildReportFilter(query);
+  if (month && Number(month) > 0) {
+    where.push("strftime('%m', b.datemeet) = ?");
+    params.push(String(month).padStart(2, '0'));
+  }
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
   const byDepartment = db
     .prepare(
@@ -466,105 +440,22 @@ function getCarReportData(query) {
     .all(...params);
 
   const equips = db.prepare('SELECT row_id, name FROM equip ORDER BY row_id').all();
-  const rows = db
-    .prepare(`SELECT row_id, datemeet, subject, perhead, perbook, equip, unit_out FROM bookroom b ${whereSql} ORDER BY b.datemeet DESC, b.row_id DESC`)
-    .all(...params);
+  const rows = db.prepare(`SELECT equip, unit_out FROM bookroom b ${whereSql}`).all(...params);
 
-  const mShort = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
-  const fmtShort = (iso) => {
-    if (!iso || String(iso).startsWith('0000')) return '-';
-    const p = String(iso).slice(0, 10).split('-');
-    if (p.length !== 3) return String(iso);
-    return `${Number(p[2])} ${mShort[Number(p[1]) - 1] || p[1]} ${Number(p[0]) + 543}`;
-  };
+  const byDriver = equips.map((e) => ({
+    row_id: e.row_id,
+    name: e.name,
+    total: rows.filter((t) => (t.equip || '').split('|').includes(String(e.row_id))).length,
+  }));
 
-  const byDriver = equips.map((e) => {
-    const matched = rows.filter((t) => (t.equip || '').split('|').includes(String(e.row_id)));
-    const tripsList = matched.map((t, idx) => {
-      const dateStr = fmtShort(t.datemeet);
-      const place = (t.perhead || t.subject || '-').trim();
-      const requester = (t.perbook || '-').trim();
-      return {
-        row_id: t.row_id,
-        datemeet: t.datemeet,
-        dateStr,
-        place,
-        requester,
-        line: `${idx + 1}. ${dateStr} | ${place} (ผู้ขอรถ: ${requester})`,
-      };
-    });
-    return {
-      row_id: e.row_id,
-      name: e.name,
-      total: matched.length,
-      tripsSummary: tripsList.map((t) => t.line).join('\n') || '-',
-      trips: tripsList,
-    };
-  });
-
-  return {
-    filterDesc,
+  res.json({
     byDepartment,
     byVehicle,
     byStatus,
     byDriver,
     internalCount: rows.filter((t) => !t.unit_out).length,
     externalCount: rows.filter((t) => !!t.unit_out).length,
-  };
-}
-
-app.get('/api/reports/summary', (req, res) => {
-  res.json(getCarReportData(req.query));
-});
-
-app.get('/api/reports/pdf', (req, res) => {
-  const { section = 'driver', download } = req.query;
-  const data = getCarReportData(req.query);
-  const isDl = download === '1';
-
-  if (section === 'driver') {
-    const cols = [
-      { label: 'ลำดับ', w: 34, align: 'center' },
-      { label: 'ชื่อพนักงานขับรถ (พขร.)', w: 125 },
-      { label: 'จำนวนเที่ยว', w: 52, align: 'center' },
-      { label: 'รายละเอียดการเดินทาง (วันเดือนปี / สถานที่ / ผู้ขอรถ)', w: 312 },
-    ];
-    const rows = data.byDriver.map((d, i) => [i + 1, d.name, d.total, d.tripsSummary || '-']);
-    return generateReportSectionPdf('รายงานสรุปตามพนักงานขับรถ (พขร.)', data.filterDesc, cols, rows, res, isDl);
-  }
-  if (section === 'vehicle') {
-    const cols = [
-      { label: 'ลำดับ', w: 42, align: 'center' },
-      { label: 'รถที่ให้บริการ', w: 230 },
-      { label: 'จำนวนเที่ยว', w: 80, align: 'center' },
-      { label: 'ระยะทาง (ก.ม.)', w: 85, align: 'right' },
-      { label: 'ค่าน้ำมัน (บาท)', w: 86, align: 'right' },
-    ];
-    const rows = data.byVehicle.map((v, i) => [i + 1, v.name, v.total, Number(v.total_km).toLocaleString(), Number(v.total_oil).toLocaleString()]);
-    return generateReportSectionPdf('รายงานสรุปตามรถที่ให้บริการ', data.filterDesc, cols, rows, res, isDl);
-  }
-  if (section === 'department') {
-    const cols = [
-      { label: 'ลำดับ', w: 42, align: 'center' },
-      { label: 'หน่วยงาน', w: 230 },
-      { label: 'จำนวนเที่ยว', w: 80, align: 'center' },
-      { label: 'ระยะทาง (ก.ม.)', w: 85, align: 'right' },
-      { label: 'ค่าน้ำมัน (บาท)', w: 86, align: 'right' },
-    ];
-    const rows = data.byDepartment.map((d, i) => [i + 1, d.name, d.total, Number(d.total_km).toLocaleString(), Number(d.total_oil).toLocaleString()]);
-    return generateReportSectionPdf('รายงานสรุปการใช้รถตามหน่วยงาน', data.filterDesc, cols, rows, res, isDl);
-  }
-  const STATUS_NAMES = { 0: 'รออนุมัติ', 1: 'อนุมัติแล้ว', 6: 'ไม่อนุมัติ', 9: 'ยกเลิกการจอง' };
-  const cols = [
-    { label: 'รายการ', w: 350 },
-    { label: 'จำนวน (ครั้ง)', w: 173, align: 'center' },
-  ];
-  const rows = [
-    ...data.byStatus.map((s) => [STATUS_NAMES[s.b_status] || s.b_status, s.total]),
-    ['ภายในจังหวัด', data.internalCount],
-    ['ไปต่างจังหวัด', data.externalCount],
-  ];
-  return generateReportSectionPdf('รายงานสรุปตามสถานะและพื้นที่', data.filterDesc, cols, rows, res, isDl);
+  });
 });
 
 // ==================== VEHICLES (room) ====================
