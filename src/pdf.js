@@ -395,30 +395,31 @@ function generateReportSectionPdf(title, filterDesc, columns, rows, res, downloa
     }
   }
 
-  if (y + 185 > doc.page.height - 32) {
+  if (y + 215 > doc.page.height - 32) {
     doc.addPage({ size: 'A4', margins: { top: 36, bottom: 36, left: 36, right: 36 } });
-    y = 44;
+    y = 48;
   }
-  const sigY = y + 22;
+  const sigY = y + 28;
   const sigColW = contentW / 3;
   const sigCols = ['ผู้จัดทำรายงาน', 'ผู้ดำเนินการ / ตรวจสอบ', 'ผู้รับรอง / หัวหน้างาน'];
   sigCols.forEach((roleLabel, idx) => {
     const sx = left + sigColW * idx;
-    doc.fillColor('#0f172a').font('Sarabun').fontSize(9)
-      .text('ลงชื่อ .......................................', sx, sigY, { width: sigColW, align: 'center' })
-      .text('( ........................................... )', sx, sigY + 15, { width: sigColW, align: 'center' });
-    doc.font('Sarabun-Bold').text(roleLabel, sx, sigY + 30, { width: sigColW, align: 'center' });
+    doc.fillColor('#0f172a').font('Sarabun').fontSize(9.5)
+      .text('ลงชื่อ .........................................', sx, sigY, { width: sigColW, align: 'center' })
+      .text('( ............................................. )', sx, sigY + 18, { width: sigColW, align: 'center' });
+    doc.font('Sarabun-Bold').fontSize(9.5).text(roleLabel, sx, sigY + 36, { width: sigColW, align: 'center' });
     doc.font('Sarabun').fontSize(8.5).fillColor('#64748b')
-      .text('วันที่ ......... / ......... / .............', sx, sigY + 45, { width: sigColW, align: 'center' });
+      .text('วันที่ ......... / ......... / .............', sx, sigY + 54, { width: sigColW, align: 'center' });
   });
 
-  const dirY = sigY + 74;
+  const dirY = sigY + 92;
   doc.fillColor('#0f172a').font('Sarabun').fontSize(9.5)
     .text('ลงชื่อ ...............................................', left, dirY, { width: contentW, align: 'center' })
-    .text('( นางณัฐปภัสร์ นวัตชัยศิริกุล )', left, dirY + 17, { width: contentW, align: 'center' });
-  doc.font('Sarabun-Bold').text('นายแพทย์ชำนาญการพิเศษ', left, dirY + 34, { width: contentW, align: 'center' });
+    .text('( นางณัฐปภัสร์ นวัตชัยศิริกุล )', left, dirY + 18, { width: contentW, align: 'center' });
+  doc.font('Sarabun-Bold').fontSize(9.5).text('นายแพทย์ชำนาญการพิเศษ', left, dirY + 36, { width: contentW, align: 'center' });
   doc.font('Sarabun').fontSize(9)
-    .text('รักษาการในตำแหน่ง\nผู้อำนวยการ รพ.โคกศรีสุพรรณ', left, dirY + 50, { width: contentW, align: 'center' });
+    .text('รักษาการในตำแหน่ง', left, dirY + 52, { width: contentW, align: 'center' })
+    .text('ผู้อำนวยการ รพ.โคกศรีสุพรรณ', left, dirY + 67, { width: contentW, align: 'center' });
 
   doc.end();
 }
