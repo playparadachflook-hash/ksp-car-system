@@ -803,12 +803,32 @@ async function submitAdminAction(e) {
 }
 
 // ==================== MASTER CRUD ====================
+function carPhotoUrl(pic) {
+  if (!pic) return '';
+  const s = String(pic).trim();
+  if (s.startsWith('/uploads/') || s.startsWith('http://') || s.startsWith('https://') || s.startsWith('data:image/')) {
+    return s;
+  }
+  return '';
+}
+
+function previewCarPhoto(url, title) {
+  document.getElementById('reqDetailTitle').textContent = title || 'รูปรถยนต์';
+  document.getElementById('reqDetailBody').innerHTML = `<div style="text-align:center;"><img src="${esc(url)}" style="max-width:100%;max-height:70vh;border-radius:12px;" /></div>`;
+  document.getElementById('reqDetailModal').classList.remove('hidden');
+}
+
 function renderVehicles() {
   document.getElementById('vehiclesTbody').innerHTML = state.vehicles
-    .map(
-      (v) => `
+    .map((v) => {
+      const picUrl = carPhotoUrl(v.picture);
+      const thumbHtml = picUrl
+        ? `<img class="car-thumb" src="${esc(picUrl)}" alt="${esc(v.name)}" onclick="previewCarPhoto('${esc(picUrl)}', '${esc(v.name)}')" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" /><div class="car-thumb-empty" style="display:none">🚗</div>`
+        : `<div class="car-thumb-empty" title="ยังไม่มีรูปรถ">🚗</div>`;
+      return `
       <tr>
         <td>${v.row_id}</td>
+        <td>${thumbHtml}</td>
         <td><strong>${esc(v.name)}</strong></td>
         <td>${esc(v.brand || '-')}</td>
         <td>${esc(v.car_no || '-')}</td>
@@ -818,8 +838,8 @@ function renderVehicles() {
           <button class="btn btn-outline btn-sm" onclick="openMasterModal('vehicle', ${v.row_id})">แก้ไข</button>
           <button class="btn btn-danger btn-sm" onclick="deleteMaster('vehicles', ${v.row_id}, renderVehicles)">ลบ</button>
         </td>
-      </tr>`
-    )
+      </tr>`;
+    })
     .join('');
 }
 
@@ -889,6 +909,7 @@ function openMasterModal(type, id = null) {
 
   if (type === 'vehicle') {
     const item = id ? state.vehicles.find((x) => x.row_id === id) : {};
+    const picUrl = carPhotoUrl(item.picture);
     title.textContent = id ? 'แก้ไขข้อมูลรถยนต์' : 'เพิ่มรถยนต์';
     form.innerHTML = `
       <div class="form-group"><label>ทะเบียน / ชื่อรถ *</label><input name="name" required value="${esc(item.name || '')}" /></div>
@@ -896,6 +917,17 @@ function openMasterModal(type, id = null) {
       <div class="form-group"><label>เลขตัวถัง</label><input name="car_no" value="${esc(item.car_no || '')}" /></div>
       <div class="form-group"><label>จำนวนที่นั่ง</label><input name="numper" value="${esc(item.numper || '')}" /></div>
       <div class="form-group"><label>เบอร์โทร</label><input name="tel" value="${esc(item.tel || '')}" /></div>
+      <div class="form-group car-pic-box">
+        <label>รูปรถยนต์</label>
+        <input type="hidden" name="picture" id="carPicData" value="${esc(picUrl)}" />
+        <input type="file" id="carPicFile" accept="image/*" onchange="onCarPicSelected(this)" />
+        <div id="carPicPreviewWrap" class="${picUrl ? '' : 'hidden'}">
+          <img id="carPicPreview" class="car-pic-preview" src="${esc(picUrl)}" alt="รูปรถยนต์" />
+          <div style="margin-top:6px;">
+            <button type="button" class="btn btn-danger btn-sm" onclick="removeCarPic()">🗑️ ลบรูปรถ</button>
+          </div>
+        </div>
+      </div>
       <div class="form-actions"><button class="btn btn-primary full-btn" type="submit">บันทึก</button></div>
     `;
   } else if (type === 'driver') {
@@ -939,6 +971,37 @@ function openMasterModal(type, id = null) {
   }
 
   document.getElementById('masterModal').classList.remove('hidden');
+}
+
+async function onCarPicSelected(input) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    const img = new Image();
+    img.onload = () => {
+      const maxW = 1000;
+      const scale = img.width > maxW ? maxW / img.width : 1;
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+      document.getElementById('carPicData').value = dataUrl;
+      document.getElementById('carPicPreview').src = dataUrl;
+      document.getElementById('carPicPreviewWrap').classList.remove('hidden');
+    };
+    img.src = reader.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function removeCarPic() {
+  document.getElementById('carPicData').value = '__REMOVE__';
+  document.getElementById('carPicFile').value = '';
+  document.getElementById('carPicPreview').src = '';
+  document.getElementById('carPicPreviewWrap').classList.add('hidden');
 }
 
 async function submitMaster(e) {

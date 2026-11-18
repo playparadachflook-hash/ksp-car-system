@@ -1,5 +1,6 @@
 require('dotenv').config();
 const path = require('path');
+const fs = require('fs');
 const express = require('express');
 const session = require('express-session');
 const db = require('./src/db');
@@ -7,9 +8,11 @@ const { generateCarBookingPdf, generateCarBoardPdf, generateReportSectionPdf } =
 
 const app = express();
 const PORT = Number(process.env.PORT || 3531);
+const CAR_UPLOAD_DIR = path.join(__dirname, 'data', 'uploads', 'cars');
+fs.mkdirSync(CAR_UPLOAD_DIR, { recursive: true });
 
-app.use(express.json({ limit: '2mb' }));
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(
   session({
     secret: process.env.SESSION_SECRET || 'ksp-car-system-secret',
@@ -19,6 +22,7 @@ app.use(
   })
 );
 
+app.use('/uploads', express.static(path.join(__dirname, 'data', 'uploads')));
 app.use(express.static(path.join(__dirname, 'public')));
 
 function nowSql() {
@@ -568,30 +572,62 @@ app.get('/api/reports/pdf', requireAdmin, (req, res) => {
 });
 
 // ==================== VEHICLES (room) ====================
+function removeOldCarFile(picPath) {
+  if (!picPath || !String(picPath).startsWith('/uploads/cars/')) return;
+  const full = path.join(__dirname, 'data', picPath.replace(/^\/+/, ''));
+  try {
+    if (fs.existsSync(full)) fs.unlinkSync(full);
+  } catch {}
+}
+
+function saveCarPicture(picture, existing = '') {
+  if (picture === '__REMOVE__') {
+    removeOldCarFile(existing);
+    return '';
+  }
+  if (!picture) return existing || '';
+  const m = String(picture).match(/^data:image\/(png|jpe?g|webp|gif);base64,(.+)$/i);
+  if (m) {
+    const ext = m[1].toLowerCase() === 'jpeg' ? 'jpg' : m[1].toLowerCase();
+    const fname = `car_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    fs.writeFileSync(path.join(CAR_UPLOAD_DIR, fname), Buffer.from(m[2], 'base64'));
+    removeOldCarFile(existing);
+    return `/uploads/cars/${fname}`;
+  }
+  return String(picture);
+}
+
 app.get('/api/vehicles', (req, res) => {
   res.json(db.prepare('SELECT * FROM room ORDER BY row_id ASC').all());
 });
 
 app.post('/api/vehicles', requireAdmin, (req, res) => {
-  const { name, brand, car_no, numper, tel } = req.body;
+  const { name, brand, car_no, numper, tel, picture } = req.body;
   if (!name || !name.trim()) return res.status(400).json({ error: 'กรุณาระบุชื่อ/ทะเบียนรถ' });
+  const picPath = saveCarPicture(picture, '');
   const info = db
-    .prepare('INSERT INTO room (name, brand, car_no, numper, tel, d_update) VALUES (?, ?, ?, ?, ?, ?)')
-    .run(name.trim(), brand || '', car_no || '', numper || '0', tel || '', nowSql());
-  res.status(201).json({ row_id: info.lastInsertRowid });
+    .prepare('INSERT INTO room (name, brand, car_no, numper, tel, picture, d_update) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    .run(name.trim(), brand || '', car_no || '', numper || '0', tel || '', picPath, nowSql());
+  res.status(201).json({ row_id: info.lastInsertRowid, picture: picPath });
 });
 
 app.put('/api/vehicles/:id', requireAdmin, (req, res) => {
-  const { name, brand, car_no, numper, tel } = req.body;
+  const id = Number(req.params.id);
+  const { name, brand, car_no, numper, tel, picture } = req.body;
   if (!name || !name.trim()) return res.status(400).json({ error: 'กรุณาระบุชื่อ/ทะเบียนรถ' });
-  db.prepare('UPDATE room SET name = ?, brand = ?, car_no = ?, numper = ?, tel = ?, d_update = ? WHERE row_id = ?').run(
-    name.trim(), brand || '', car_no || '', numper || '0', tel || '', nowSql(), Number(req.params.id)
+  const cur = db.prepare('SELECT picture FROM room WHERE row_id = ?').get(id);
+  const picPath = saveCarPicture(picture, cur ? cur.picture : '');
+  db.prepare('UPDATE room SET name = ?, brand = ?, car_no = ?, numper = ?, tel = ?, picture = ?, d_update = ? WHERE row_id = ?').run(
+    name.trim(), brand || '', car_no || '', numper || '0', tel || '', picPath, nowSql(), id
   );
-  res.json({ ok: true });
+  res.json({ ok: true, picture: picPath });
 });
 
 app.delete('/api/vehicles/:id', requireAdmin, (req, res) => {
-  db.prepare('DELETE FROM room WHERE row_id = ?').run(Number(req.params.id));
+  const id = Number(req.params.id);
+  const cur = db.prepare('SELECT picture FROM room WHERE row_id = ?').get(id);
+  if (cur) removeOldCarFile(cur.picture);
+  db.prepare('DELETE FROM room WHERE row_id = ?').run(id);
   res.json({ ok: true });
 });
 
