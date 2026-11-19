@@ -438,8 +438,8 @@ async function getCarReportData(query) {
 
   const byDepartment = (await db.all(`SELECT COALESCE(NULLIF(u.unit_name, ''), NULLIF(b.unit_out, ''), 'ไม่ระบุหน่วยงาน') AS name,
               COUNT(*) AS total,
-              COALESCE(SUM(CAST(b.sum_km AS REAL)), 0) AS total_km,
-              COALESCE(SUM(CAST(b.oil AS REAL)), 0) AS total_oil
+              COALESCE(SUM(CASE WHEN TRIM(b.sum_km) REGEXP '^[0-9]+(\\.[0-9]+)?$' THEN CAST(TRIM(b.sum_km) AS DECIMAL(12,2)) ELSE 0 END), 0) AS total_km,
+              COALESCE(SUM(CASE WHEN TRIM(b.oil) REGEXP '^[0-9]+(\\.[0-9]+)?$' THEN CAST(TRIM(b.oil) AS DECIMAL(12,2)) ELSE 0 END), 0) AS total_oil
        FROM bookroom b
        LEFT JOIN unit_all u ON u.row_id = b.unit_id
        ${whereSql}
@@ -448,12 +448,12 @@ async function getCarReportData(query) {
 
   const byVehicle = (await db.all(`SELECT COALESCE(r.name, 'ยังไม่จัดรถ') AS name,
               COUNT(*) AS total,
-              COALESCE(SUM(CAST(b.sum_km AS REAL)), 0) AS total_km,
-              COALESCE(SUM(CAST(b.oil AS REAL)), 0) AS total_oil
+              COALESCE(SUM(CASE WHEN TRIM(b.sum_km) REGEXP '^[0-9]+(\\.[0-9]+)?$' THEN CAST(TRIM(b.sum_km) AS DECIMAL(12,2)) ELSE 0 END), 0) AS total_km,
+              COALESCE(SUM(CASE WHEN TRIM(b.oil) REGEXP '^[0-9]+(\\.[0-9]+)?$' THEN CAST(TRIM(b.oil) AS DECIMAL(12,2)) ELSE 0 END), 0) AS total_oil
        FROM bookroom b
        LEFT JOIN room r ON r.row_id = b.room_id
        ${whereSql}
-       GROUP BY b.room_id
+       GROUP BY b.room_id, r.name
        ORDER BY total DESC`, params));
 
   const byStatus = (await db.all(`SELECT b.b_status, COUNT(*) AS total FROM bookroom b ${whereSql} GROUP BY b.b_status`, params));
