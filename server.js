@@ -1,4 +1,4 @@
-require('dotenv').config();
+﻿require('dotenv').config();
 const path = require('path');
 const fs = require('fs');
 const express = require('express');
@@ -47,18 +47,16 @@ function requireAdmin(req, res, next) {
 }
 
 // ==================== AUTH ====================
-app.get('/api/auth/me', (req, res) => {
+app.get('/api/auth/me', async (req, res) => {
   res.json({ user: req.session.user || null });
 });
 
-app.post('/api/auth/login', (req, res) => {
+app.post('/api/auth/login', async (req, res) => {
   const { username, password } = req.body;
   if (!username || !password) {
     return res.status(400).json({ error: 'กรุณากรอก Username และ Password' });
   }
-  const user = db
-    .prepare('SELECT row_id, title, fname, lname, telephone, unit_id, usertype, puchai FROM personaldata WHERE puchai = ? AND rahuspan = ?')
-    .get(String(username).trim(), String(password).trim());
+  const user = (await db.get('SELECT row_id, title, fname, lname, telephone, unit_id, usertype, puchai FROM personaldata WHERE puchai = ? AND rahuspan = ?', [String(username).trim(), String(password).trim()]));
 
   if (!user) {
     return res.status(401).json({ error: 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง' });
@@ -77,7 +75,7 @@ app.post('/api/auth/login', (req, res) => {
   res.json({ user: req.session.user });
 });
 
-app.post('/api/auth/logout', (req, res) => {
+app.post('/api/auth/logout', async (req, res) => {
   req.session.destroy(() => {
     res.json({ ok: true });
   });
@@ -90,17 +88,15 @@ registerMophProviderRoutes(app, {
     const lastTh = String(profile.lastname_th || '').trim();
     const titleTh = String(profile.special_title_th || profile.title_th || '').trim();
     const cols = 'row_id, title, fname, lname, telephone, unit_id, usertype, puchai';
-    let user = db.prepare(`SELECT ${cols} FROM personaldata WHERE LOWER(puchai) = LOWER(?) LIMIT 1`).get(loginname);
+    let user = (await db.get(`SELECT ${cols} FROM personaldata WHERE LOWER(puchai) = LOWER(?) LIMIT 1`, [loginname]));
     if (!user && firstTh && lastTh) {
-      user = db.prepare(`SELECT ${cols} FROM personaldata WHERE fname LIKE ? AND lname LIKE ? LIMIT 1`).get(`%${firstTh}%`, `%${lastTh}%`);
+      user = (await db.get(`SELECT ${cols} FROM personaldata WHERE fname LIKE ? AND lname LIKE ? LIMIT 1`, [`%${firstTh}%`, `%${lastTh}%`]));
     }
     if (!user) {
       const f = firstTh || String(opdUser.name || loginname).split(/\s+/)[0] || loginname;
       const l = lastTh || String(opdUser.name || '').split(/\s+/).slice(1).join(' ');
-      const info = db
-        .prepare("INSERT INTO personaldata (title, fname, lname, telephone, unit_id, usertype, puchai, rahuspan) VALUES (?, ?, ?, '', 0, 'user', ?, '')")
-        .run(titleTh, f, l, loginname || `moph_${Date.now()}`);
-      user = db.prepare(`SELECT ${cols} FROM personaldata WHERE row_id = ?`).get(info.lastInsertRowid);
+      const info = await db.run("INSERT INTO personaldata (title, fname, lname, telephone, unit_id, usertype, puchai, rahuspan) VALUES (?, ?, ?, '', 0, 'user', ?, '')", [titleTh, f, l, loginname || `moph_${Date.now()}`);
+      user = (await db.get(`SELECT ${cols} FROM personaldata WHERE row_id = ?`, [info.lastInsertRowid]));
     }
     const fullName = `${user.fname || ''} ${user.lname || ''}`.trim() || user.puchai;
     return {
@@ -116,9 +112,9 @@ registerMophProviderRoutes(app, {
 });
 
 // ==================== STATS & ECO ====================
-app.get('/api/stats', (req, res) => {
-  const total = db.prepare('SELECT COUNT(*) AS cnt FROM bookroom').get().cnt;
-  const statusRows = db.prepare('SELECT b_status, COUNT(*) AS cnt FROM bookroom GROUP BY b_status').all();
+app.get('/api/stats', async (req, res) => {
+  const total = (await db.get('SELECT COUNT(*) AS cnt FROM bookroom')).cnt;
+  const statusRows = (await db.all('SELECT b_status, COUNT(*) AS cnt FROM bookroom GROUP BY b_status'));
   const counts = { 0: 0, 1: 0, 6: 0, 9: 0 };
   for (const r of statusRows) {
     counts[r.b_status] = r.cnt;
@@ -148,11 +144,11 @@ function buildBookingWhere(query, user) {
     params.push(date);
   } else {
     if (year) {
-      where.push("strftime('%Y', b.datemeet) = ?");
+      where.push("DATE_FORMAT(b.datemeet, '%Y') = ?");
       params.push(String(year));
     }
     if (month && Number(month) > 0) {
-      where.push("strftime('%m', b.datemeet) = ?");
+      where.push("DATE_FORMAT(b.datemeet, '%m') = ?");
       params.push(String(month).padStart(2, '0'));
     }
   }
@@ -174,7 +170,7 @@ function buildBookingWhere(query, user) {
   }
   if (q && q.trim()) {
     const like = `%${q.trim()}%`;
-    where.push('(b.subject LIKE ? OR b.perhead LIKE ? OR b.numper LIKE ? OR b.perbook LIKE ? OR CAST(b.row_id AS TEXT) LIKE ?)');
+    where.push('(b.subject LIKE ? OR b.perhead LIKE ? OR b.numper LIKE ? OR b.perbook LIKE ? OR CAST(b.row_id AS CHAR) LIKE ?)');
     params.push(like, like, like, like, like);
   }
   return {
@@ -183,27 +179,23 @@ function buildBookingWhere(query, user) {
   };
 }
 
-app.get('/api/bookings', (req, res) => {
+app.get('/api/bookings', async (req, res) => {
   const { whereSql, params } = buildBookingWhere(req.query, req.session.user);
-  const totalRow = db.prepare(`SELECT COUNT(*) AS cnt FROM bookroom b ${whereSql}`).get(...params);
+  const totalRow = (await db.get(`SELECT COUNT(*) AS cnt FROM bookroom b ${whereSql}`, params));
 
   const pageNum = Math.max(1, Number(req.query.page) || 1);
   const pageSize = Math.min(500, Math.max(1, Number(req.query.limit) || 50));
   const offset = (pageNum - 1) * pageSize;
 
-  const rows = db
-    .prepare(
-      `SELECT b.*, r.name AS room_name, u.unit_name AS unit_name
+  const rows = (await db.all(`SELECT b.*, r.name AS room_name, u.unit_name AS unit_name
        FROM bookroom b
        LEFT JOIN room r ON r.row_id = b.room_id
        LEFT JOIN unit_all u ON u.row_id = b.unit_id
        ${whereSql}
        ORDER BY COALESCE(NULLIF(b.datemeet, ''), substr(b.datereg, 1, 10)) DESC, b.row_id DESC
-       LIMIT ? OFFSET ?`
-    )
-    .all(...params, pageSize, offset);
+       LIMIT ? OFFSET ?`, [...params, pageSize, offset]));
 
-  const equips = db.prepare('SELECT row_id, name FROM equip').all();
+  const equips = (await db.all('SELECT row_id, name FROM equip'));
   const equipMap = Object.fromEntries(equips.map((e) => [String(e.row_id), e.name]));
 
   const items = rows.map((row) => {
@@ -220,21 +212,17 @@ app.get('/api/bookings', (req, res) => {
   });
 });
 
-app.get('/api/bookings/board/pdf', requireAdmin, (req, res) => {
+app.get('/api/bookings/board/pdf', requireAdmin, async (req, res) => {
   const { whereSql, params } = buildBookingWhere(req.query, req.session.user);
-  const rows = db
-    .prepare(
-      `SELECT b.*, r.name AS room_name, u.unit_name AS unit_name
+  const rows = (await db.all(`SELECT b.*, r.name AS room_name, u.unit_name AS unit_name
        FROM bookroom b
        LEFT JOIN room r ON r.row_id = b.room_id
        LEFT JOIN unit_all u ON u.row_id = b.unit_id
        ${whereSql}
        ORDER BY b.datemeet DESC, b.row_id DESC
-       LIMIT 200`
-    )
-    .all(...params);
+       LIMIT 200`, params));
 
-  const equips = db.prepare('SELECT row_id, name FROM equip').all();
+  const equips = (await db.all('SELECT row_id, name FROM equip'));
   const equipMap = Object.fromEntries(equips.map((e) => [String(e.row_id), e.name]));
   const items = rows.map((row) => {
     const equipIds = (row.equip || '').split('|').filter(Boolean);
@@ -248,44 +236,36 @@ app.get('/api/bookings/board/pdf', requireAdmin, (req, res) => {
   generateCarBoardPdf(items, parts.join(' | '), res, req.query.download === '1');
 });
 
-app.get('/api/bookings/:id/pdf', requireAdmin, (req, res) => {
-  const row = db
-    .prepare(
-      `SELECT b.*, r.name AS room_name, u.unit_name AS unit_name
+app.get('/api/bookings/:id/pdf', requireAdmin, async (req, res) => {
+  const row = (await db.get(`SELECT b.*, r.name AS room_name, u.unit_name AS unit_name
        FROM bookroom b
        LEFT JOIN room r ON r.row_id = b.room_id
        LEFT JOIN unit_all u ON u.row_id = b.unit_id
-       WHERE b.row_id = ?`
-    )
-    .get(Number(req.params.id));
+       WHERE b.row_id = ?`, [Number(req.params.id)]));
   if (!row) return res.status(404).json({ error: 'ไม่พบข้อมูลใบขอใช้รถ' });
 
-  const equips = db.prepare('SELECT row_id, name FROM equip').all();
+  const equips = (await db.all('SELECT row_id, name FROM equip'));
   const equipMap = Object.fromEntries(equips.map((e) => [String(e.row_id), e.name]));
   const equipIds = (row.equip || '').split('|').filter(Boolean);
   const booking = { ...row, equipIds, equipNames: equipIds.map((id) => equipMap[id] || id) };
   generateCarBookingPdf(booking, res, req.query.download === '1');
 });
 
-app.get('/api/bookings/:id', (req, res) => {
-  const row = db
-    .prepare(
-      `SELECT b.*, r.name AS room_name, u.unit_name AS unit_name
+app.get('/api/bookings/:id', async (req, res) => {
+  const row = (await db.get(`SELECT b.*, r.name AS room_name, u.unit_name AS unit_name
        FROM bookroom b
        LEFT JOIN room r ON r.row_id = b.room_id
        LEFT JOIN unit_all u ON u.row_id = b.unit_id
-       WHERE b.row_id = ?`
-    )
-    .get(Number(req.params.id));
+       WHERE b.row_id = ?`, [Number(req.params.id)]));
   if (!row) return res.status(404).json({ error: 'ไม่พบข้อมูลใบขอใช้รถ' });
 
-  const equips = db.prepare('SELECT row_id, name FROM equip').all();
+  const equips = (await db.all('SELECT row_id, name FROM equip'));
   const equipMap = Object.fromEntries(equips.map((e) => [String(e.row_id), e.name]));
   const equipIds = (row.equip || '').split('|').filter(Boolean);
   res.json({ ...row, equipIds, equipNames: equipIds.map((id) => equipMap[id] || id) });
 });
 
-app.post('/api/bookings', requireAuth, (req, res) => {
+app.post('/api/bookings', requireAuth, async (req, res) => {
   const b = req.body;
   if (!b.subject || !b.numper) {
     return res.status(400).json({ error: 'กรุณากรอกเรื่องที่ขอไปราชการ และชื่อผู้ขอใช้รถ' });
@@ -295,17 +275,12 @@ app.post('/api/bookings', requireAuth, (req, res) => {
   const unitId = b.unit_out ? 0 : Number(b.unit_id || 0);
   const perbook = b.perbook || req.session.user.fullName;
 
-  const info = db
-    .prepare(
-      `INSERT INTO bookroom (
+  const info = (await db.run(`INSERT INTO bookroom (
         datereg, subject, perhead, numper, passenger, tel, room_id,
         datemeet, s_time, e_time, t_time, equip, food, memo, memo1,
         perbook, b_status, from_ip, unit_out, unit_id,
         start_km, stop_km, sum_km, oil, bill_oil, user_id, d_update
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    )
-    .run(
-      now,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [now,
       b.subject.trim(),
       (b.perhead || '').trim(),
       b.numper.trim(),
@@ -331,15 +306,14 @@ app.post('/api/bookings', requireAuth, (req, res) => {
       req.session.user.isAdmin ? String(b.oil || '') : '',
       req.session.user.isAdmin ? String(b.bill_oil || '') : '',
       req.session.user.row_id,
-      now
-    );
+      now]));
 
   res.status(201).json({ row_id: info.lastInsertRowid });
 });
 
-app.put('/api/bookings/:id', requireAuth, (req, res) => {
+app.put('/api/bookings/:id', requireAuth, async (req, res) => {
   const id = Number(req.params.id);
-  const existing = db.prepare('SELECT * FROM bookroom WHERE row_id = ?').get(id);
+  const existing = (await db.get('SELECT * FROM bookroom WHERE row_id = ?', [id]));
   if (!existing) return res.status(404).json({ error: 'ไม่พบข้อมูลใบขอใช้รถ' });
 
   const isOwner = existing.perbook === req.session.user.fullName || existing.user_id === req.session.user.row_id;
@@ -356,15 +330,12 @@ app.put('/api/bookings/:id', requireAuth, (req, res) => {
       : ''
     : existing.equip;
 
-  db.prepare(
-    `UPDATE bookroom SET
+  (await db.run(`UPDATE bookroom SET
       subject = ?, perhead = ?, numper = ?, passenger = ?, tel = ?,
       room_id = ?, datemeet = ?, s_time = ?, e_time = ?, t_time = ?,
       equip = ?, memo = ?, memo1 = ?, b_status = ?,
       unit_out = ?, unit_id = ?, start_km = ?, stop_km = ?, sum_km = ?, oil = ?, bill_oil = ?, d_update = ?
-    WHERE row_id = ?`
-  ).run(
-    b.subject ?? existing.subject,
+    WHERE row_id = ?`, [b.subject ?? existing.subject,
     b.perhead ?? existing.perhead,
     b.numper ?? existing.numper,
     b.passenger !== undefined ? String(b.passenger) : existing.passenger,
@@ -386,28 +357,24 @@ app.put('/api/bookings/:id', requireAuth, (req, res) => {
     req.session.user.isAdmin ? String(b.oil ?? existing.oil ?? '') : existing.oil,
     req.session.user.isAdmin ? String(b.bill_oil ?? existing.bill_oil ?? '') : existing.bill_oil,
     now,
-    id
-  );
+    id]));
 
   res.json({ ok: true });
 });
 
-app.patch('/api/bookings/:id/approve', requireAdmin, (req, res) => {
+app.patch('/api/bookings/:id/approve', requireAdmin, async (req, res) => {
   const id = Number(req.params.id);
-  const existing = db.prepare('SELECT * FROM bookroom WHERE row_id = ?').get(id);
+  const existing = (await db.get('SELECT * FROM bookroom WHERE row_id = ?', [id]));
   if (!existing) return res.status(404).json({ error: 'ไม่พบข้อมูลใบขอใช้รถ' });
 
   const { b_status, room_id, equipIds, assigned_to, t_time, start_km, stop_km, sum_km, oil, bill_oil, memo1 } = req.body;
   const equipStr = Array.isArray(equipIds) ? (equipIds.length ? `${equipIds.join('|')}|` : '') : existing.equip;
 
-  db.prepare(
-    `UPDATE bookroom SET
+  (await db.run(`UPDATE bookroom SET
       b_status = ?, room_id = ?, equip = ?, assigned_to = ?,
       t_time = ?, start_km = ?, stop_km = ?, sum_km = ?, oil = ?, bill_oil = ?,
       memo1 = ?, d_update = ?
-    WHERE row_id = ?`
-  ).run(
-    Number(b_status ?? existing.b_status),
+    WHERE row_id = ?`, [Number(b_status ?? existing.b_status),
     room_id !== undefined ? Number(room_id) : existing.room_id,
     equipStr,
     (assigned_to ?? existing.assigned_to ?? '').trim(),
@@ -419,13 +386,12 @@ app.patch('/api/bookings/:id/approve', requireAdmin, (req, res) => {
     bill_oil !== undefined ? String(bill_oil) : (existing.bill_oil || ''),
     memo1 !== undefined ? memo1 : existing.memo1,
     nowSql(),
-    id
-  );
+    id]));
   res.json({ ok: true });
 });
 
-app.delete('/api/bookings/:id', requireAdmin, (req, res) => {
-  db.prepare('DELETE FROM bookroom WHERE row_id = ?').run(Number(req.params.id));
+app.delete('/api/bookings/:id', requireAdmin, async (req, res) => {
+  (await db.run('DELETE FROM bookroom WHERE row_id = ?', [Number(req.params.id)]));
   res.json({ ok: true });
 });
 
@@ -450,12 +416,12 @@ function buildReportFilter(query, col = 'b.datemeet') {
     desc.push(`ปีงบประมาณ ${ce + 543} (${start} ถึง ${end})`);
   } else {
     if (year) {
-      where.push(`strftime('%Y', ${col}) = ?`);
+      where.push(`DATE_FORMAT(${col}, '%Y') = ?`);
       params.push(String(year));
       desc.push(`ปี พ.ศ. ${Number(year) + 543}`);
     }
     if (month && Number(month) > 0) {
-      where.push(`strftime('%m', ${col}) = ?`);
+      where.push(`DATE_FORMAT(${col}, '%m') = ?`);
       params.push(String(month).padStart(2, '0'));
       desc.push(`เดือน ${month}`);
     }
@@ -467,12 +433,10 @@ function buildReportFilter(query, col = 'b.datemeet') {
   };
 }
 
-function getCarReportData(query) {
+async function getCarReportData(query) {
   const { whereSql, params, filterDesc } = buildReportFilter(query);
 
-  const byDepartment = db
-    .prepare(
-      `SELECT COALESCE(NULLIF(u.unit_name, ''), NULLIF(b.unit_out, ''), 'ไม่ระบุหน่วยงาน') AS name,
+  const byDepartment = (await db.all(`SELECT COALESCE(NULLIF(u.unit_name, ''), NULLIF(b.unit_out, ''), 'ไม่ระบุหน่วยงาน') AS name,
               COUNT(*) AS total,
               COALESCE(SUM(CAST(b.sum_km AS REAL)), 0) AS total_km,
               COALESCE(SUM(CAST(b.oil AS REAL)), 0) AS total_oil
@@ -480,13 +444,9 @@ function getCarReportData(query) {
        LEFT JOIN unit_all u ON u.row_id = b.unit_id
        ${whereSql}
        GROUP BY name
-       ORDER BY total DESC`
-    )
-    .all(...params);
+       ORDER BY total DESC`, params));
 
-  const byVehicle = db
-    .prepare(
-      `SELECT COALESCE(r.name, 'ยังไม่จัดรถ') AS name,
+  const byVehicle = (await db.all(`SELECT COALESCE(r.name, 'ยังไม่จัดรถ') AS name,
               COUNT(*) AS total,
               COALESCE(SUM(CAST(b.sum_km AS REAL)), 0) AS total_km,
               COALESCE(SUM(CAST(b.oil AS REAL)), 0) AS total_oil
@@ -494,18 +454,12 @@ function getCarReportData(query) {
        LEFT JOIN room r ON r.row_id = b.room_id
        ${whereSql}
        GROUP BY b.room_id
-       ORDER BY total DESC`
-    )
-    .all(...params);
+       ORDER BY total DESC`, params));
 
-  const byStatus = db
-    .prepare(`SELECT b.b_status, COUNT(*) AS total FROM bookroom b ${whereSql} GROUP BY b.b_status`)
-    .all(...params);
+  const byStatus = (await db.all(`SELECT b.b_status, COUNT(*) AS total FROM bookroom b ${whereSql} GROUP BY b.b_status`, params));
 
-  const equips = db.prepare('SELECT row_id, name FROM equip ORDER BY row_id').all();
-  const rows = db
-    .prepare(`SELECT row_id, datemeet, subject, perhead, numper, perbook, equip, unit_out FROM bookroom b ${whereSql} ORDER BY b.datemeet DESC, b.row_id DESC`)
-    .all(...params);
+  const equips = (await db.all('SELECT row_id, name FROM equip ORDER BY row_id'));
+  const rows = (await db.all(`SELECT row_id, datemeet, subject, perhead, numper, perbook, equip, unit_out FROM bookroom b ${whereSql} ORDER BY b.datemeet DESC, b.row_id DESC`, params));
 
   const mShort = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
   const fmtShort = (iso) => {
@@ -550,13 +504,13 @@ function getCarReportData(query) {
   };
 }
 
-app.get('/api/reports/summary', (req, res) => {
-  res.json(getCarReportData(req.query));
+app.get('/api/reports/summary', async (req, res) => {
+  res.json(await getCarReportData(req.query));
 });
 
-app.get('/api/reports/pdf', requireAdmin, (req, res) => {
+app.get('/api/reports/pdf', requireAdmin, async (req, res) => {
   const { section = 'driver', download } = req.query;
-  const data = getCarReportData(req.query);
+  const data = await getCarReportData(req.query);
   const isDl = download === '1';
 
   if (section === 'driver') {
@@ -630,133 +584,114 @@ function saveCarPicture(picture, existing = '') {
   return String(picture);
 }
 
-app.get('/api/vehicles', (req, res) => {
-  res.json(db.prepare('SELECT * FROM room ORDER BY row_id ASC').all());
+app.get('/api/vehicles', async (req, res) => {
+  res.json((await db.all('SELECT * FROM room ORDER BY row_id ASC')));
 });
 
-app.post('/api/vehicles', requireAdmin, (req, res) => {
+app.post('/api/vehicles', requireAdmin, async (req, res) => {
   const { name, brand, car_no, numper, tel, picture } = req.body;
   if (!name || !name.trim()) return res.status(400).json({ error: 'กรุณาระบุชื่อ/ทะเบียนรถ' });
   const picPath = saveCarPicture(picture, '');
-  const info = db
-    .prepare('INSERT INTO room (name, brand, car_no, numper, tel, picture, d_update) VALUES (?, ?, ?, ?, ?, ?, ?)')
-    .run(name.trim(), brand || '', car_no || '', numper || '0', tel || '', picPath, nowSql());
+  const info = (await db.run('INSERT INTO room (name, brand, car_no, numper, tel, picture, d_update) VALUES (?, ?, ?, ?, ?, ?, ?)', [name.trim(), brand || '', car_no || '', numper || '0', tel || '', picPath, nowSql()]));
   res.status(201).json({ row_id: info.lastInsertRowid, picture: picPath });
 });
 
-app.put('/api/vehicles/:id', requireAdmin, (req, res) => {
+app.put('/api/vehicles/:id', requireAdmin, async (req, res) => {
   const id = Number(req.params.id);
   const { name, brand, car_no, numper, tel, picture } = req.body;
   if (!name || !name.trim()) return res.status(400).json({ error: 'กรุณาระบุชื่อ/ทะเบียนรถ' });
-  const cur = db.prepare('SELECT picture FROM room WHERE row_id = ?').get(id);
+  const cur = (await db.get('SELECT picture FROM room WHERE row_id = ?', [id]));
   const picPath = saveCarPicture(picture, cur ? cur.picture : '');
-  db.prepare('UPDATE room SET name = ?, brand = ?, car_no = ?, numper = ?, tel = ?, picture = ?, d_update = ? WHERE row_id = ?').run(
-    name.trim(), brand || '', car_no || '', numper || '0', tel || '', picPath, nowSql(), id
-  );
+  (await db.run('UPDATE room SET name = ?, brand = ?, car_no = ?, numper = ?, tel = ?, picture = ?, d_update = ? WHERE row_id = ?', [name.trim(), brand || '', car_no || '', numper || '0', tel || '', picPath, nowSql(), id]));
   res.json({ ok: true, picture: picPath });
 });
 
-app.delete('/api/vehicles/:id', requireAdmin, (req, res) => {
+app.delete('/api/vehicles/:id', requireAdmin, async (req, res) => {
   const id = Number(req.params.id);
-  const cur = db.prepare('SELECT picture FROM room WHERE row_id = ?').get(id);
+  const cur = (await db.get('SELECT picture FROM room WHERE row_id = ?', [id]));
   if (cur) removeOldCarFile(cur.picture);
-  db.prepare('DELETE FROM room WHERE row_id = ?').run(id);
+  (await db.run('DELETE FROM room WHERE row_id = ?', [id]));
   res.json({ ok: true });
 });
 
 // ==================== DRIVERS (equip) ====================
-app.get('/api/drivers', (req, res) => {
-  res.json(db.prepare('SELECT * FROM equip ORDER BY row_id ASC').all());
+app.get('/api/drivers', async (req, res) => {
+  res.json((await db.all('SELECT * FROM equip ORDER BY row_id ASC')));
 });
 
-app.post('/api/drivers', requireAdmin, (req, res) => {
+app.post('/api/drivers', requireAdmin, async (req, res) => {
   const { name, tel } = req.body;
   if (!name || !name.trim()) return res.status(400).json({ error: 'กรุณาระบุชื่อพนักงานขับรถ' });
-  const info = db.prepare('INSERT INTO equip (name, tel, d_update) VALUES (?, ?, ?)').run(name.trim(), tel || '', nowSql());
+  const info = (await db.run('INSERT INTO equip (name, tel, d_update) VALUES (?, ?, ?)', [name.trim(), tel || '', nowSql()]));
   res.status(201).json({ row_id: info.lastInsertRowid });
 });
 
-app.put('/api/drivers/:id', requireAdmin, (req, res) => {
+app.put('/api/drivers/:id', requireAdmin, async (req, res) => {
   const { name, tel } = req.body;
   if (!name || !name.trim()) return res.status(400).json({ error: 'กรุณาระบุชื่อพนักงานขับรถ' });
-  db.prepare('UPDATE equip SET name = ?, tel = ?, d_update = ? WHERE row_id = ?').run(name.trim(), tel || '', nowSql(), Number(req.params.id));
+  (await db.run('UPDATE equip SET name = ?, tel = ?, d_update = ? WHERE row_id = ?', [name.trim(), tel || '', nowSql(), Number(req.params.id)]));
   res.json({ ok: true });
 });
 
-app.delete('/api/drivers/:id', requireAdmin, (req, res) => {
-  db.prepare('DELETE FROM equip WHERE row_id = ?').run(Number(req.params.id));
+app.delete('/api/drivers/:id', requireAdmin, async (req, res) => {
+  (await db.run('DELETE FROM equip WHERE row_id = ?', [Number(req.params.id)]));
   res.json({ ok: true });
 });
 
 // ==================== UNITS (unit_all) ====================
-app.get('/api/units', (req, res) => {
-  res.json(db.prepare('SELECT * FROM unit_all ORDER BY unit_name ASC').all());
+app.get('/api/units', async (req, res) => {
+  res.json((await db.all('SELECT * FROM unit_all ORDER BY unit_name ASC')));
 });
 
-app.post('/api/units', requireAdmin, (req, res) => {
+app.post('/api/units', requireAdmin, async (req, res) => {
   const { unit_code, unit_name, unit_head, tel } = req.body;
   if (!unit_name || !unit_name.trim()) return res.status(400).json({ error: 'กรุณาระบุชื่อหน่วยงาน' });
-  const info = db
-    .prepare('INSERT INTO unit_all (unit_code, unit_name, unit_head, tel, d_update) VALUES (?, ?, ?, ?, ?)')
-    .run(unit_code || '', unit_name.trim(), unit_head || '', tel || '', nowSql());
+  const info = (await db.run('INSERT INTO unit_all (unit_code, unit_name, unit_head, tel, d_update) VALUES (?, ?, ?, ?, ?)', [unit_code || '', unit_name.trim(), unit_head || '', tel || '', nowSql()]));
   res.status(201).json({ row_id: info.lastInsertRowid });
 });
 
-app.put('/api/units/:id', requireAdmin, (req, res) => {
+app.put('/api/units/:id', requireAdmin, async (req, res) => {
   const { unit_code, unit_name, unit_head, tel } = req.body;
   if (!unit_name || !unit_name.trim()) return res.status(400).json({ error: 'กรุณาระบุชื่อหน่วยงาน' });
-  db.prepare('UPDATE unit_all SET unit_code = ?, unit_name = ?, unit_head = ?, tel = ?, d_update = ? WHERE row_id = ?').run(
-    unit_code || '', unit_name.trim(), unit_head || '', tel || '', nowSql(), Number(req.params.id)
-  );
+  (await db.run('UPDATE unit_all SET unit_code = ?, unit_name = ?, unit_head = ?, tel = ?, d_update = ? WHERE row_id = ?', [unit_code || '', unit_name.trim(), unit_head || '', tel || '', nowSql(), Number(req.params.id)]));
   res.json({ ok: true });
 });
 
-app.delete('/api/units/:id', requireAdmin, (req, res) => {
-  db.prepare('DELETE FROM unit_all WHERE row_id = ?').run(Number(req.params.id));
+app.delete('/api/units/:id', requireAdmin, async (req, res) => {
+  (await db.run('DELETE FROM unit_all WHERE row_id = ?', [Number(req.params.id)]));
   res.json({ ok: true });
 });
 
 // ==================== USERS (personaldata) ====================
-app.get('/api/users', requireAdmin, (req, res) => {
-  const rows = db
-    .prepare(
-      `SELECT p.row_id, p.title, p.fname, p.lname, p.telephone, p.unit_id, p.usertype, p.puchai, u.unit_name
+app.get('/api/users', requireAdmin, async (req, res) => {
+  const rows = (await db.all(`SELECT p.row_id, p.title, p.fname, p.lname, p.telephone, p.unit_id, p.usertype, p.puchai, u.unit_name
        FROM personaldata p
        LEFT JOIN unit_all u ON u.row_id = p.unit_id
-       ORDER BY p.row_id DESC`
-    )
-    .all();
+       ORDER BY p.row_id DESC`));
   res.json(rows);
 });
 
-app.post('/api/users', requireAdmin, (req, res) => {
+app.post('/api/users', requireAdmin, async (req, res) => {
   const { title, fname, lname, telephone, unit_id, usertype, puchai, rahuspan } = req.body;
   if (!fname || !puchai || !rahuspan) {
     return res.status(400).json({ error: 'กรุณากรอก ชื่อ, Username และ Password' });
   }
   try {
-    const info = db
-      .prepare(
-        `INSERT INTO personaldata (title, fname, lname, telephone, unit_id, usertype, puchai, rahuspan, d_update)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      )
-      .run(title || '', fname.trim(), lname || '', telephone || '', Number(unit_id || 0), usertype === 'adminn' ? 'adminn' : 'user', puchai.trim(), rahuspan.trim(), nowSql());
+    const info = (await db.run(`INSERT INTO personaldata (title, fname, lname, telephone, unit_id, usertype, puchai, rahuspan, d_update)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, [title || '', fname.trim(), lname || '', telephone || '', Number(unit_id || 0), usertype === 'adminn' ? 'adminn' : 'user', puchai.trim(), rahuspan.trim(), nowSql()]));
     res.status(201).json({ row_id: info.lastInsertRowid });
   } catch {
     res.status(400).json({ error: 'Username นี้มีอยู่ในระบบแล้ว' });
   }
 });
 
-app.put('/api/users/:id', requireAdmin, (req, res) => {
+app.put('/api/users/:id', requireAdmin, async (req, res) => {
   const id = Number(req.params.id);
-  const existing = db.prepare('SELECT * FROM personaldata WHERE row_id = ?').get(id);
+  const existing = (await db.get('SELECT * FROM personaldata WHERE row_id = ?', [id]));
   if (!existing) return res.status(404).json({ error: 'ไม่พบผู้ใช้งาน' });
 
   const { title, fname, lname, telephone, unit_id, usertype, puchai, rahuspan } = req.body;
-  db.prepare(
-    `UPDATE personaldata SET title = ?, fname = ?, lname = ?, telephone = ?, unit_id = ?, usertype = ?, puchai = ?, rahuspan = ?, d_update = ? WHERE row_id = ?`
-  ).run(
-    title ?? existing.title,
+  (await db.run(`UPDATE personaldata SET title = ?, fname = ?, lname = ?, telephone = ?, unit_id = ?, usertype = ?, puchai = ?, rahuspan = ?, d_update = ? WHERE row_id = ?`, [title ?? existing.title,
     fname ?? existing.fname,
     lname ?? existing.lname,
     telephone ?? existing.telephone,
@@ -765,17 +700,16 @@ app.put('/api/users/:id', requireAdmin, (req, res) => {
     puchai ?? existing.puchai,
     rahuspan ? rahuspan : existing.rahuspan,
     nowSql(),
-    id
-  );
+    id]));
   res.json({ ok: true });
 });
 
-app.delete('/api/users/:id', requireAdmin, (req, res) => {
-  db.prepare('DELETE FROM personaldata WHERE row_id = ?').run(Number(req.params.id));
+app.delete('/api/users/:id', requireAdmin, async (req, res) => {
+  (await db.run('DELETE FROM personaldata WHERE row_id = ?', [Number(req.params.id)]));
   res.json({ ok: true });
 });
 
-app.get('*', (req, res) => {
+app.get('*', async (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 

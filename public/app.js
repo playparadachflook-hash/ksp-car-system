@@ -809,6 +809,9 @@ function carPhotoUrl(pic) {
   if (s.startsWith('/uploads/') || s.startsWith('http://') || s.startsWith('https://') || s.startsWith('data:image/')) {
     return s;
   }
+  if (/^\d+$/.test(s)) {
+    return `/uploads/cars/${s}.jpg`;
+  }
   return '';
 }
 
